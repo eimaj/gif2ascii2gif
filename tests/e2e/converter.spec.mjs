@@ -41,11 +41,21 @@ async function routeDemo(page, file, delayMs = 0) {
   });
 }
 
-test('uploading a GIF starts the preview playing', async ({ page }) => {
+test('uploading a GIF starts the preview playing, and the GIF never leaves the browser', async ({ page }) => {
+  const gifBytes = readFileSync(small);
+  const marker = gifBytes.subarray(gifBytes.length - 64); // a run of the fixture's image data
+  const uploads = [];
+  page.on('request', (req) => {
+    const body = req.postDataBuffer();
+    if (body && (body.length > 512 || body.includes(marker))) uploads.push(`${req.method()} ${req.url()} (${body.length} bytes)`);
+  });
   await upload(page, small);
   expect(await canvasWidth(page)).toBeGreaterThan(0);
   const first = await frameData(page);
   await expect.poll(() => frameData(page), { timeout: 3000 }).not.toBe(first);
+  await Promise.all([page.waitForEvent('download'), page.click('#download-player')]);
+  await Promise.all([page.waitForEvent('download'), page.click('#download-gif')]);
+  expect(uploads).toEqual([]);
 });
 
 test('changing width resizes the canvas', async ({ page }) => {
