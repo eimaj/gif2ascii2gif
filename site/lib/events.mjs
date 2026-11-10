@@ -4,7 +4,7 @@ export const EVENTS = {
   convert: 'a GIF was converted',
   export_gif: 'the GIF was downloaded',
   export_player: 'the terminal player was downloaded',
-  blocked_too_large: 'a GIF was refused for being over a size limit',
+  blocked_too_large: 'a GIF was refused for being over a size or shape limit',
 };
 
 export const FIELDS = {
