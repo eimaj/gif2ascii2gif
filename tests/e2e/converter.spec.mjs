@@ -98,6 +98,17 @@ test('the downloaded player holds the current frames, width, and delay', async (
   }
 });
 
+test('a Copy button puts the exact CLI command on the clipboard', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  const button = page.locator('button[data-copy="cmd-clone"]');
+  await button.click();
+  await expect(button).toHaveText('Copied');
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toBe(await page.locator('#cmd-clone').textContent());
+  expect(copied).toBe('git clone https://github.com/eimaj/gif2ascii2gif.git && cd gif2ascii2gif');
+});
+
 // Collect the body of every usage event the page sends.
 async function captureEvents(page) {
   const bodies = [];
