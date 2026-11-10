@@ -24,6 +24,10 @@ test('privacy note says the GIF never leaves the browser', () => {
   assert.match(privacyNoteText(), /never leaves your browser/);
 });
 
+test('privacy note says a URL load, including the demo, is fetched from that host', () => {
+  assert.match(privacyNoteText(), /by URL, including the demo, fetches it directly from that host/);
+});
+
 test('privacy note scopes "nothing else" to the events and discloses Web Analytics', () => {
   const text = privacyNoteText();
   assert.match(text, /These events carry nothing else/);

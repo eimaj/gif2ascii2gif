@@ -48,6 +48,7 @@ export function validateEvent(body) {
 export function privacyNote() {
   return [
     { p: 'Your GIF never leaves your browser. Decoding, conversion, and both downloads happen on your device; the site never uploads, proxies, or stores the GIF or its URL.' },
+    { p: 'Loading a GIF by URL, including the demo, fetches it directly from that host, which sees your request like any other.' },
     { p: 'To see whether the site is used, it counts these anonymous events:' },
     { ul: Object.entries(EVENTS).map(([name, about]) => `${name}: ${about}`) },
     { p: 'Each event can carry only these coarse fields:' },
