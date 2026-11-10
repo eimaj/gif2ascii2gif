@@ -154,8 +154,12 @@ test('loading another GIF during an encode keeps that export and its event intac
   await page.click('#download-gif');
   await expect(page.locator('#message')).toContainText('Encoding GIF');
   await drop(page, small);
-  await expect(page.locator('#message')).toContainText('Converted small.gif');
-  await expect(page.locator('#download-gif')).toBeDisabled();
+  // The encode's progress messages share #message, so read the loaded GIF from #info instead.
+  const state = () => page.evaluate(() => ({
+    smallShown: document.querySelector('#info').textContent.startsWith('8 frames'),
+    exportDisabled: document.querySelector('#download-gif').disabled,
+  }));
+  await expect.poll(state).toEqual({ smallShown: true, exportDisabled: true });
   const gif = await downloaded;
   expect(gif.suggestedFilename()).toBe('long.gif');
   await expect(page.locator('#download-gif')).toBeEnabled();
