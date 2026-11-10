@@ -197,9 +197,9 @@ test('scale and background controls reach the export and the preview', async ({ 
 
   await expect(page.locator('#stage')).toHaveClass(/checker/);
   await page.locator('#transparent').uncheck();
-  await page.locator('#bg-color').fill('#000000');
+  await page.locator('#bg-color').fill('#ff0000'); // not the default (#000000), so the chosen color must reach the preview
   const corner = () => page.locator('#preview').evaluate((c) => [...c.getContext('2d').getImageData(0, 0, 1, 1).data]);
-  await expect.poll(corner).toEqual([0, 0, 0, 255]);
+  await expect.poll(corner).toEqual([255, 0, 0, 255]);
   await expect(page.locator('#stage')).not.toHaveClass(/checker/);
 });
 
