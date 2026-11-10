@@ -9,7 +9,7 @@ import { frameSize, convertFrames } from '../../site/lib/core.mjs';
 import { decodeGif, LimitError } from '../../site/lib/decode.mjs';
 import { playerSource, parsePlayer } from '../../site/lib/player.mjs';
 import { tempDir, makeGif, probeGif } from '../helpers/fixtures.mjs';
-import { RED, BLUE, encode, imageDescriptorOffsets } from '../helpers/gifs.mjs';
+import { RED, BLUE, WHITE, encode, imageDescriptorOffsets } from '../helpers/gifs.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -74,6 +74,30 @@ for (const { fps, frames, nominalMs } of RATES) {
     const player = assertParity(gif, [], {});
     assert.equal(player.frames.length, frames);
     assert.ok(Math.abs(player.delayMs - nominalMs) <= 5, `delay ${player.delayMs} ms, expected about ${nominalMs}`);
+  });
+}
+
+// A 64×48 white GIF with a red block moving right, one frame per delay (ms), written by gifenc.
+function gifWithDelays(delays) {
+  const frames = delays.map((delay, n) => ({
+    w: 64, h: 48, palette: [WHITE, RED], delay,
+    index: Array.from({ length: 64 * 48 }, (_, i) => +(i % 64 >= n * 12 && i % 64 < n * 12 + 16 && i >= 16 * 64 && i < 32 * 64)),
+  }));
+  const gif = join(tempDir(), 'delays.gif');
+  writeFileSync(gif, encode(frames));
+  return gif;
+}
+
+const DELAYS = [
+  { label: 'uneven', delays: [100, 500, 100, 500], expectMs: 300 },
+  { label: 'zero, counted as 100 ms', delays: [0, 0, 0], expectMs: 100 },
+];
+
+for (const { label, delays, expectMs } of DELAYS) {
+  test(`parity: CLI and site agree on frame count and delay with ${label} GIF delays`, () => {
+    const player = assertParity(gifWithDelays(delays), [], {});
+    assert.equal(player.frames.length, delays.length);
+    assert.equal(player.delayMs, expectMs);
   });
 }
 
