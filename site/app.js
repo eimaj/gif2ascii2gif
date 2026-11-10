@@ -1,5 +1,5 @@
 // gif2ascii in the browser: everything runs client-side.
-import { decodeGif, checkFileSize, resampleArea, LimitError, NotAGifError } from './lib/decode.mjs';
+import { decodeGif, checkFileSize, readCapped, resampleArea, LimitError, NotAGifError } from './lib/decode.mjs';
 import { frameSize, convertFrames } from './lib/core.mjs';
 import { parseAnsiFrame, gridBounds, renderFrameRGBA } from './lib/render.mjs';
 import { playerSource } from './lib/player.mjs';
@@ -85,18 +85,40 @@ function decodePath(path) {
   }
 }
 
+// The server did not finish sending the GIF in time.
+class FetchTimeoutError extends Error {
+  constructor(options) {
+    super('fetch timed out', options);
+    this.name = 'FetchTimeoutError';
+  }
+}
+
+const FETCH_TIMEOUT_MS = 30_000;
+
+// Fetch a GIF by URL, giving up after FETCH_TIMEOUT_MS and reading at most MAX_BYTES of the body,
+// whatever Content-Length says.
 async function fetchGif(url, signal) {
+  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const both = AbortSignal.any([signal, timeout]);
+  const failed = (err) => {
+    if (signal.aborted) return err;
+    if (timeout.aborted) return new FetchTimeoutError({ cause: err });
+    return null;
+  };
   let res;
   try {
-    res = await fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', signal });
+    res = await fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', signal: both });
   } catch (err) {
-    if (signal.aborted) throw err;
-    throw new FetchBlockedError({ cause: err });
+    throw failed(err) ?? new FetchBlockedError({ cause: err });
   }
   if (!res.ok) throw new Error(`The server answered ${res.status} ${res.statusText} for that URL.`);
   const length = Number(res.headers.get('content-length'));
   if (length) checkFileSize(length);
-  return res.arrayBuffer();
+  try {
+    return await readCapped(res.body);
+  } catch (err) {
+    throw failed(err) ?? err;
+  }
 }
 
 function errorMessage(err) {
@@ -108,6 +130,9 @@ function errorMessage(err) {
   }
   if (err instanceof FetchBlockedError) {
     return 'That host blocks downloads from other websites, so your browser cannot fetch it. Save the GIF to your device and upload it instead.';
+  }
+  if (err instanceof FetchTimeoutError) {
+    return `That server did not send the GIF within ${FETCH_TIMEOUT_MS / 1000} seconds, so the download was stopped. Try again, or save the GIF to your device and upload it instead.`;
   }
   return `Something went wrong: ${err.message}`;
 }
@@ -138,7 +163,8 @@ async function load(getBuffer, { name, input }) {
       console.debug(`load of ${name}.gif superseded by a newer load`, err);
       return;
     }
-    if (!(err instanceof LimitError || err instanceof NotAGifError || err instanceof FetchBlockedError)) console.error(err);
+    const expected = [LimitError, NotAGifError, FetchBlockedError, FetchTimeoutError].some((E) => err instanceof E);
+    if (!expected) console.error(err);
     showMessage(errorMessage(err), 'error');
     if (err instanceof LimitError) onBlocked(err, input);
   } finally {

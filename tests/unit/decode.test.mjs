@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { GIFEncoder } from '../../site/vendor/gifenc/gifenc.esm.js';
 import {
   MAX_FRAMES, MAX_BYTES, MAX_PIXELS, MAX_TOTAL_PIXELS, MAX_ASPECT, LimitError, NotAGifError,
-  decodeGif, resampleArea, flattenOnWhite, compositeFrames,
+  decodeGif, readCapped, resampleArea, flattenOnWhite, compositeFrames,
 } from '../../site/lib/decode.mjs';
 import { frameDelay, frameSize } from '../../site/lib/core.mjs';
 
@@ -160,6 +160,30 @@ test('decodeGif: a source more than 5 times taller than wide throws an aspect Li
     assert.match(err.message, /200\.0 times taller.*limit is 5/);
     return true;
   });
+});
+
+test('readCapped: stops a stream with no length once it passes the limit', async () => {
+  let pulled = 0;
+  let cancelled = false;
+  const body = new ReadableStream({
+    pull(c) { pulled++; c.enqueue(new Uint8Array(1024)); }, // endless, like a server that never stops
+    cancel() { cancelled = true; },
+  });
+  await assert.rejects(readCapped(body, 10 * 1024), (err) => {
+    assert.ok(err instanceof LimitError);
+    assert.equal(err.kind, 'download');
+    assert.equal(err.limit, 10 * 1024);
+    assert.equal(err.actual, 11 * 1024);
+    assert.match(err.message, /stopped after 11 KB.*limit is 10 KB/);
+    return true;
+  });
+  assert.ok(cancelled);
+  assert.ok(pulled <= 12);
+});
+
+test('readCapped: returns the whole body when it fits', async () => {
+  const body = new ReadableStream({ start(c) { c.enqueue(new Uint8Array([1, 2])); c.enqueue(new Uint8Array([3])); c.close(); } });
+  assert.deepEqual([...new Uint8Array(await readCapped(body, 3))], [1, 2, 3]);
 });
 
 test('decodeGif: at the aspect limit the widest preview stays within 400 rows', () => {

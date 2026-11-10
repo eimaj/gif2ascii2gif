@@ -79,6 +79,13 @@ test('a 301-frame GIF is blocked with the limit and the reason', async ({ page }
   expect(await canvasWidth(page)).toBe(0);
 });
 
+test('the demo is fetched by URL, read through the size-capped reader, and converted', async ({ page }) => {
+  await page.goto('/');
+  await routeDemo(page, square);
+  await page.click('#demo');
+  await expect(page.locator('#message')).toContainText('Converted dance-dancing.gif: 4 frames');
+});
+
 test('a newer load wins over a slower earlier one', async ({ page }) => {
   await page.goto('/');
   await routeDemo(page, square, 1500);

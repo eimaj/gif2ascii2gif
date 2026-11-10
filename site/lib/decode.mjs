@@ -13,6 +13,7 @@ export const MAX_ASPECT = 5;
 const LIMIT_MESSAGES = {
   frames: (actual, limit) => `This GIF has ${actual} frames; the limit is ${limit}.`,
   bytes: (actual, limit) => `This file is ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
+  download: (actual, limit) => `The download was stopped after ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
   pixels: (actual, limit) => `Each frame of this GIF is ${formatMegapixels(actual)}; the limit is ${formatMegapixels(limit)}.`,
   total: (actual, limit) => `This GIF has ${formatMegapixels(actual)} across all its frames; the limit is ${formatMegapixels(limit)}.`,
   aspect: (actual, limit) => `This GIF is ${actual.toFixed(1)} times taller than it is wide; the limit is ${limit}.`,
@@ -23,7 +24,7 @@ export class LimitError extends Error {
   constructor(kind, limit, actual) {
     super(LIMIT_MESSAGES[kind](actual, limit));
     this.name = 'LimitError';
-    this.kind = kind; // 'frames' | 'bytes' | 'pixels' | 'total' | 'aspect'
+    this.kind = kind; // 'frames' | 'bytes' | 'download' | 'pixels' | 'total' | 'aspect'
     this.limit = limit;
     this.actual = actual;
   }
@@ -47,6 +48,28 @@ export function formatMegapixels(n) {
 
 export function checkFileSize(bytes) {
   if (bytes > MAX_BYTES) throw new LimitError('bytes', MAX_BYTES, bytes);
+}
+
+// Read a response body stream into an ArrayBuffer, stopping with a download LimitError once it
+// passes `limit` bytes, so a body with no (or a false) Content-Length cannot exhaust memory.
+export async function readCapped(body, limit = MAX_BYTES) {
+  const reader = body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > limit) {
+      await reader.cancel();
+      throw new LimitError('download', limit, total);
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { out.set(c, offset); offset += c.length; }
+  return out.buffer;
 }
 
 // The GIF header can declare sizes far beyond its byte size; check them before any pixel buffer exists.
