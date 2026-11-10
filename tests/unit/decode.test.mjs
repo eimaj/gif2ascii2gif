@@ -4,7 +4,8 @@ import {
   MAX_FRAMES, MAX_BYTES, MAX_SIDE, MAX_TOTAL_PIXELS, MAX_ASPECT, LimitError, NotAGifError,
   decodeGif, checkPixels, readCapped, resampleArea, flattenOnWhite, compositeFrames,
 } from '../../site/lib/decode.mjs';
-import { frameDelay, frameSize } from '../../site/lib/core.mjs';
+import { readFileSync } from 'node:fs';
+import { frameDelay, frameSize, MAX_WIDTH, CHAR_ASPECT } from '../../site/lib/core.mjs';
 import { RED, BLUE, GREEN, WHITE, encode, declaring } from '../helpers/gifs.mjs';
 
 const pixel = (rgb, w, x, y) => [...rgb.subarray((y * w + x) * 3, (y * w + x) * 3 + 3)];
@@ -223,5 +224,13 @@ test('readCapped: returns the whole body when it fits', async () => {
 test('decodeGif: at the aspect limit the widest preview stays within 400 rows', () => {
   const { frames, width, height } = decodeGif(declaring({ screen: [2, 10] }));
   assert.equal(frames.length, 1);
-  assert.equal(frameSize(width, height, 160).h, 400);
+  assert.equal(frameSize(width, height, MAX_WIDTH).h, 400);
+  assert.ok(MAX_ASPECT * MAX_WIDTH * CHAR_ASPECT <= 400);
+});
+
+test('the page width control stops at MAX_WIDTH, which the aspect limit relies on', () => {
+  const html = readFileSync(new URL('../../site/index.html', import.meta.url), 'utf8');
+  const input = html.match(/<input id="width"[^>]*>/)?.[0];
+  assert.ok(input, 'width input found');
+  assert.equal(Number(input.match(/\bmax="(\d+)"/)?.[1]), MAX_WIDTH);
 });

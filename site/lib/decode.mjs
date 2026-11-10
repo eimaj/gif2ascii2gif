@@ -10,7 +10,8 @@ export const MAX_SIDE = 4096; // pixels per side of the GIF's screen; every fram
 // this limit) and one RGBA canvas. Frames are decompressed one at a time; gifuct-js holds each
 // frame's pixels at about 12 B/px (20 B/px interlaced) until that frame is composited.
 export const MAX_TOTAL_PIXELS = 50_000_000;
-// Height ÷ width. At the widest setting (160 columns) this caps the preview at 400 rows.
+// Height ÷ width. At the widest setting (MAX_WIDTH, 160 columns) this caps the preview at
+// MAX_ASPECT × MAX_WIDTH × CHAR_ASPECT = 400 rows; a unit test pins that product.
 export const MAX_ASPECT = 5;
 
 const count = (n) => n.toLocaleString('en-US');

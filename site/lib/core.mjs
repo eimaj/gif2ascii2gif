@@ -6,6 +6,7 @@ export const RAMP = ' .:-=+*#%@';
 export const CHAR_ASPECT = 0.5; // terminal cells are ~2x taller than wide
 export const MAX_BG_DISTANCE = 180; // RGB distance from the background that maps to the densest character
 export const DEFAULT_WIDTH = 40;
+export const MAX_WIDTH = 160; // the site's width control maximum (site/index.html); MAX_ASPECT relies on it
 export const DEFAULT_BG_THRESHOLD = 40;
 export const MIN_FPS = 1;
 export const MAX_FPS = 60;
