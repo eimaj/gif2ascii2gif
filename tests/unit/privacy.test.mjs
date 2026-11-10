@@ -18,3 +18,11 @@ test('privacy note lists every field and every allowed value', () => {
 test('privacy note says the GIF never leaves the browser', () => {
   assert.match(privacyNoteText(), /never leaves your browser/);
 });
+
+test('privacy note scopes "nothing else" to the events and discloses Web Analytics', () => {
+  const text = privacyNoteText();
+  assert.match(text, /These events carry nothing else/);
+  assert.doesNotMatch(text, /Nothing else is recorded/);
+  assert.match(text, /Cloudflare Web Analytics/);
+  assert.match(text, /browser, operating system, and country/);
+});

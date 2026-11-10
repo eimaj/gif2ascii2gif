@@ -82,7 +82,7 @@ Below the converter the page SHALL show, in order: a three-step "How it works", 
 - **THEN** the full license text is served from the site itself
 
 ### Requirement: Privacy note
-The page SHALL state that the GIF never leaves the browser, and SHALL list exactly which anonymous usage events and fields are counted.
+The page SHALL state that the GIF never leaves the browser, SHALL list exactly which anonymous usage events and fields are counted, and SHALL disclose the host's cookieless page-view analytics (Cloudflare Web Analytics, per design D7) and what it derives from each request, so the statement of what the events omit does not deny what page-view analytics collects.
 
 #### Scenario: Privacy note matches events
 - **WHEN** the set of usage events changes

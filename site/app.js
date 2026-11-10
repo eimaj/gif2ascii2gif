@@ -339,6 +339,12 @@ $('privacy-note').replaceChildren(...privacyNote().map((block) => {
   if (block.p) {
     const p = document.createElement('p');
     p.textContent = block.p;
+    if (block.link) {
+      const a = document.createElement('a');
+      a.href = block.link.href;
+      a.textContent = block.link.text;
+      p.append(' ', a, '.');
+    }
     return p;
   }
   const ul = document.createElement('ul');

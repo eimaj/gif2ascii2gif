@@ -43,7 +43,8 @@ export function validateEvent(body) {
   return null;
 }
 
-// The privacy note as a heading-free list of blocks: { p } paragraphs and { ul } lists of strings.
+// The privacy note as a heading-free list of blocks: { p } paragraphs (with an optional trailing
+// { link: { text, href } }) and { ul } lists of strings.
 export function privacyNote() {
   return [
     { p: 'Your GIF never leaves your browser. Decoding, conversion, and both downloads happen on your device; the site never uploads, proxies, or stores the GIF or its URL.' },
@@ -51,10 +52,14 @@ export function privacyNote() {
     { ul: Object.entries(EVENTS).map(([name, about]) => `${name}: ${about}`) },
     { p: 'Each event can carry only these coarse fields:' },
     { ul: Object.entries(FIELDS).map(([name, f]) => `${name} (${f.about}): ${f.values.join(', ')}`) },
-    { p: 'Nothing else is recorded: no IP address, user agent, cookie, file name, GIF URL, or any identifier that links events to you or to each other.' },
+    { p: 'These events carry nothing else: no IP address, user agent, cookie, file name, GIF URL, or any identifier that links events to you or to each other.' },
+    {
+      p: 'Separately, page views are counted by Cloudflare Web Analytics, which sets no cookies; Cloudflare derives your browser, operating system, and country from the page request.',
+      link: { text: 'Cloudflare privacy policy', href: 'https://www.cloudflare.com/privacypolicy/' },
+    },
   ];
 }
 
 export function privacyNoteText() {
-  return privacyNote().map((b) => b.p ?? b.ul.join('\n')).join('\n');
+  return privacyNote().map((b) => (b.p ? [b.p, b.link?.text].filter(Boolean).join(' ') : b.ul.join('\n'))).join('\n');
 }
