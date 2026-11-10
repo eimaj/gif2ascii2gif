@@ -4,7 +4,7 @@ import { frameSize, convertFrames } from './lib/core.mjs';
 import { parseAnsiFrame, gridBounds, renderFrameRGBA } from './lib/render.mjs';
 import { playerSource } from './lib/player.mjs';
 import { GIFEncoder, quantize, applyPalette } from './vendor/gifenc/gifenc.esm.js';
-import { privacyNote } from './lib/events.mjs';
+import { privacyNote, validateEvent, widthBucket, framesBucket } from './lib/events.mjs';
 
 const DEMO_URL = 'https://media.tenor.com/1iOUXZFLpBgAAAAM/dance-dancing.gif';
 
@@ -119,6 +119,7 @@ async function load(getBuffer, { name, input }) {
     const decoded = decodeGif(await getBuffer());
     source = { ...decoded, name, input };
     onSourceLoaded();
+    sendEvent('convert', usageFields());
     showMessage(`Converted ${name}.gif: ${decoded.frames.length} frames, ${decoded.width}×${decoded.height} px.`);
   } catch (err) {
     if (!(err instanceof LimitError || err instanceof NotAGifError || err instanceof FetchBlockedError)) console.error(err);
@@ -327,7 +328,9 @@ ui.downloadPlayer.addEventListener('click', () => {
   onExport('export_player');
 });
 
-function onExport() {}
+function onExport(event) {
+  sendEvent(event, usageFields());
+}
 
 // ---- Page content ------------------------------------------------------------------------
 
@@ -361,4 +364,30 @@ for (const button of document.querySelectorAll('button[data-copy]')) {
   });
 }
 
-function onBlocked() {}
+// ---- Usage events ------------------------------------------------------------------------
+
+// Fire and forget: never awaited, and a failure never reaches the visitor.
+function sendEvent(event, fields) {
+  const body = { event, ...fields };
+  const problem = validateEvent(body);
+  if (problem) {
+    console.error(`usage event not sent (${problem})`, body);
+    return;
+  }
+  const json = JSON.stringify(body);
+  try {
+    if (navigator.sendBeacon?.('/api/event', new Blob([json], { type: 'application/json' }))) return;
+  } catch (err) {
+    console.debug('sendBeacon failed, falling back to fetch', err);
+  }
+  fetch('/api/event', { method: 'POST', body: json, headers: { 'Content-Type': 'application/json' }, keepalive: true, credentials: 'omit' })
+    .catch((err) => console.debug('usage event not delivered', err));
+}
+
+function usageFields() {
+  return { input: source.input, width: widthBucket(Number(ui.width.value)), frames: framesBucket(source.frames.length) };
+}
+
+function onBlocked(err, input) {
+  sendEvent('blocked_too_large', err.kind === 'frames' ? { input, frames: framesBucket(err.actual) } : { input });
+}
