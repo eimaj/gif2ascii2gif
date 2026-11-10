@@ -79,6 +79,26 @@ test('a 301-frame GIF is blocked with the limit and the reason', async ({ page }
   expect(await canvasWidth(page)).toBe(0);
 });
 
+test('a conversion error after a control change is shown and keeps the previous result', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (err) => pageErrors.push(err));
+  await upload(page, small);
+  const width = await canvasWidth(page);
+  await page.waitForTimeout(1500); // let all 8 frames (100 ms each) render once, so the preview plays from its cache
+  await page.evaluate(() => {
+    window.ImageData = class { constructor() { throw new RangeError('test: no memory for ImageData'); } };
+  });
+  await page.locator('#width').fill('60');
+  const message = page.locator('#message');
+  await expect(message).toHaveClass(/error/);
+  await expect(message).toContainText('test: no memory for ImageData');
+  await expect(message).toContainText('previous result is still shown');
+  expect(await canvasWidth(page)).toBe(width);
+  const first = await frameData(page);
+  await expect.poll(() => frameData(page), { timeout: 3000 }).not.toBe(first);
+  expect(pageErrors).toEqual([]);
+});
+
 test('the demo is fetched by URL, read through the size-capped reader, and converted', async ({ page }) => {
   await page.goto('/');
   await routeDemo(page, square);

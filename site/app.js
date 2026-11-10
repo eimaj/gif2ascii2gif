@@ -154,8 +154,7 @@ async function load(getBuffer, { name, input }) {
     const buffer = await getBuffer(controller.signal);
     if (gen !== loadGen) return;
     const decoded = decodeGif(buffer);
-    source = { ...decoded, name, input };
-    onSourceLoaded();
+    onSourceLoaded({ ...decoded, name, input });
     sendEvent('convert', usageFields());
     showMessage(`Converted ${name}.gif: ${decoded.frames.length} frames, ${decoded.width}×${decoded.height} px.`);
   } catch (err) {
@@ -246,44 +245,70 @@ function settings() {
   };
 }
 
-function convert() {
-  if (!source) return;
+// Convert `src` with the current settings and show it. Everything is built in locals first and
+// the shown source and result change only after the first frame has rendered, so a failure
+// (thrown to the caller) leaves the previous result playing.
+function convert(src = source) {
+  if (!src) return;
   const s = settings();
-  const { w, h } = frameSize(source.width, source.height, s.width);
-  if (resampled?.w !== w) resampled = { w, frames: source.frames.map((f) => resampleArea(f, source.width, source.height, w, h)) };
-  const ansi = convertFrames(resampled.frames, w, h, { keepBg: s.keepBg, bgThreshold: s.bgThreshold });
+  const { w, h } = frameSize(src.width, src.height, s.width);
+  const frames = src === source && resampled?.w === w
+    ? resampled.frames
+    : src.frames.map((f) => resampleArea(f, src.width, src.height, w, h));
+  const ansi = convertFrames(frames, w, h, { keepBg: s.keepBg, bgThreshold: s.bgThreshold });
   const grids = ansi.map(parseAnsiFrame);
-  result = { w, h, ansi, grids, ...gridBounds(grids), delayMs: source.delayMs };
+  const next = { w, h, ansi, grids, ...gridBounds(grids), delayMs: src.delayMs };
+  const index = src === source ? frameIndex % ansi.length : 0;
+  const first = frameImage(next, index, s.background);
+
+  source = src;
+  resampled = { w, frames };
+  result = next;
+  frameIndex = index;
   previewFrames = [];
-  const first = drawFrame(frameIndex % ansi.length);
+  if (first.data.length * grids.length <= PREVIEW_CACHE_BYTES) previewFrames[index] = first;
+  paint(first);
   ui.canvas.style.width = `${first.width * s.scale}px`;
   ui.stage.classList.toggle('checker', s.background === 'transparent');
-  const fps = (1000 / source.delayMs).toFixed(1);
+  const fps = (1000 / src.delayMs).toFixed(1);
   ui.info.textContent = `${ansi.length} frames · ${w}×${h} characters · ${fps} fps · export ${first.width * s.scale}×${first.height * s.scale} px`;
   play();
 }
 
 // Render one frame at scale 1; the canvas is scaled up with nearest-neighbor CSS, so it matches the export.
-function drawFrame(i) {
-  let img = previewFrames[i];
-  if (!img) {
-    const { data, width, height } = renderFrameRGBA(result.grids[i], result.cols, result.rows, { background: settings().background });
-    img = new ImageData(new Uint8ClampedArray(data.buffer), width, height);
-    if (data.length * result.grids.length <= PREVIEW_CACHE_BYTES) previewFrames[i] = img;
-  }
+function frameImage(res, i, background) {
+  const { data, width, height } = renderFrameRGBA(res.grids[i], res.cols, res.rows, { background });
+  return new ImageData(new Uint8ClampedArray(data.buffer), width, height);
+}
+
+function paint(img) {
   if (ui.canvas.width !== img.width || ui.canvas.height !== img.height) {
     ui.canvas.width = img.width;
     ui.canvas.height = img.height;
   }
   ui.canvas.getContext('2d').putImageData(img, 0, 0);
-  return img;
+}
+
+function drawFrame(i) {
+  let img = previewFrames[i];
+  if (!img) {
+    img = frameImage(result, i, settings().background);
+    if (img.data.length * result.grids.length <= PREVIEW_CACHE_BYTES) previewFrames[i] = img;
+  }
+  paint(img);
 }
 
 function play() {
   clearTimeout(timer);
   const tick = () => {
-    frameIndex = (frameIndex + 1) % result.grids.length;
-    drawFrame(frameIndex);
+    try {
+      frameIndex = (frameIndex + 1) % result.grids.length;
+      drawFrame(frameIndex);
+    } catch (err) {
+      console.error(err);
+      showMessage(`The preview stopped: ${err.message}`, 'error');
+      return;
+    }
     timer = setTimeout(tick, result.delayMs);
   };
   timer = setTimeout(tick, result.delayMs);
@@ -294,7 +319,12 @@ function scheduleConvert() {
   if (pending) return;
   pending = requestAnimationFrame(() => {
     pending = 0;
-    convert();
+    try {
+      convert();
+    } catch (err) {
+      console.error(err);
+      showMessage(`Could not convert with these settings: ${err.message}. The previous result is still shown.`, 'error');
+    }
   });
 }
 
@@ -302,11 +332,9 @@ for (const el of [ui.width, ui.threshold, ui.keepBg, ui.scale, ui.transparent, u
   el.addEventListener('input', scheduleConvert);
 }
 
-function onSourceLoaded() {
+function onSourceLoaded(src) {
+  convert(src);
   ui.placeholder.hidden = true;
-  resampled = null;
-  frameIndex = 0;
-  convert();
   ui.downloadGif.disabled = false;
   ui.downloadPlayer.disabled = false;
 }
