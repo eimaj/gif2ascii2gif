@@ -1,5 +1,7 @@
 // gif2ascii in the browser: everything runs client-side.
-import { decodeGif, checkFileSize, LimitError, NotAGifError } from './lib/decode.mjs';
+import { decodeGif, checkFileSize, resampleArea, LimitError, NotAGifError } from './lib/decode.mjs';
+import { frameSize, convertFrames } from './lib/core.mjs';
+import { parseAnsiFrame, gridBounds, renderFrameRGBA } from './lib/render.mjs';
 
 const DEMO_URL = 'https://media.tenor.com/1iOUXZFLpBgAAAAM/dance-dancing.gif';
 
@@ -175,9 +177,87 @@ document.addEventListener('drop', (e) => {
 
 // ---- Conversion and preview --------------------------------------------------------------
 
+const PREVIEW_CACHE_BYTES = 64 * 1024 * 1024;
+
+// The current conversion: ANSI frames plus parsed grids, shared by the preview and both exports.
+let result = null; // { w, h, ansi, grids, cols, rows, delayMs }
+let resampled = new Map(); // width → resampled RGB frames for the current source
+let previewFrames = []; // ImageData per frame, filled lazily when small enough
+let frameIndex = 0;
+let timer = 0;
+let pending = 0;
+
+function settings() {
+  return {
+    width: Number(ui.width.value),
+    bgThreshold: Number(ui.threshold.value),
+    keepBg: ui.keepBg.checked,
+    scale: Number(ui.scale.value),
+    background: ui.transparent.checked ? 'transparent' : ui.bgColor.value,
+  };
+}
+
+function convert() {
+  if (!source) return;
+  const s = settings();
+  const { w, h } = frameSize(source.width, source.height, s.width);
+  if (!resampled.has(w)) resampled.set(w, source.frames.map((f) => resampleArea(f, source.width, source.height, w, h)));
+  const ansi = convertFrames(resampled.get(w), w, h, { keepBg: s.keepBg, bgThreshold: s.bgThreshold });
+  const grids = ansi.map(parseAnsiFrame);
+  result = { w, h, ansi, grids, ...gridBounds(grids), delayMs: source.delayMs };
+  previewFrames = [];
+  const first = drawFrame(frameIndex % ansi.length);
+  ui.canvas.style.width = `${first.width * s.scale}px`;
+  ui.stage.classList.toggle('checker', s.background === 'transparent');
+  const fps = (1000 / source.delayMs).toFixed(1);
+  ui.info.textContent = `${ansi.length} frames · ${w}×${h} characters · ${fps} fps · export ${first.width * s.scale}×${first.height * s.scale} px`;
+  play();
+}
+
+// Render one frame at scale 1; the canvas is scaled up with nearest-neighbor CSS, so it matches the export.
+function drawFrame(i) {
+  let img = previewFrames[i];
+  if (!img) {
+    const { data, width, height } = renderFrameRGBA(result.grids[i], result.cols, result.rows, { background: settings().background });
+    img = new ImageData(new Uint8ClampedArray(data.buffer), width, height);
+    if (data.length * result.grids.length <= PREVIEW_CACHE_BYTES) previewFrames[i] = img;
+  }
+  if (ui.canvas.width !== img.width || ui.canvas.height !== img.height) {
+    ui.canvas.width = img.width;
+    ui.canvas.height = img.height;
+  }
+  ui.canvas.getContext('2d').putImageData(img, 0, 0);
+  return img;
+}
+
+function play() {
+  clearTimeout(timer);
+  const tick = () => {
+    frameIndex = (frameIndex + 1) % result.grids.length;
+    drawFrame(frameIndex);
+    timer = setTimeout(tick, result.delayMs);
+  };
+  timer = setTimeout(tick, result.delayMs);
+}
+
+// Coalesce rapid control changes into one conversion per animation frame.
+function scheduleConvert() {
+  if (pending) return;
+  pending = requestAnimationFrame(() => {
+    pending = 0;
+    convert();
+  });
+}
+
+for (const el of [ui.width, ui.threshold, ui.keepBg, ui.scale, ui.transparent, ui.bgColor]) {
+  el.addEventListener('input', scheduleConvert);
+}
+
 function onSourceLoaded() {
   ui.placeholder.hidden = true;
-  ui.info.textContent = `${source.frames.length} frames · ${source.width}×${source.height} px`;
+  resampled = new Map();
+  frameIndex = 0;
+  convert();
 }
 
 function onBlocked() {}
