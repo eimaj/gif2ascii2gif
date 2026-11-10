@@ -10,13 +10,16 @@ export const MAX_WIDTH = 160; // the site's width control maximum (site/index.ht
 export const DEFAULT_BG_THRESHOLD = 40;
 export const MIN_FPS = 1;
 export const MAX_FPS = 60;
+export const MIN_GIF_DELAY_MS = 20; // shorter GIF delays are treated as DEFAULT_GIF_DELAY_MS, as browsers do
+export const DEFAULT_GIF_DELAY_MS = 100;
 
 // The player's one fixed delay, from the GIF's own per-frame delays in ms: their average
-// (delays under 20 ms count as 100 ms, as browsers do), clamped to 1–60 fps.
+// (delays under MIN_GIF_DELAY_MS count as DEFAULT_GIF_DELAY_MS), clamped to MIN_FPS–MAX_FPS.
 // The CLI (delays from ffprobe) and the site (delays from gifuct-js) both use this rule.
 export function frameDelay(delays) {
-  if (!delays.length) return 100;
-  const fixed = delays.map((d) => (d >= 20 ? d : 100)); // also catches missing (null, NaN) delays
+  if (!delays.length) return DEFAULT_GIF_DELAY_MS;
+  // The comparison also catches missing (null, NaN) delays.
+  const fixed = delays.map((d) => (d >= MIN_GIF_DELAY_MS ? d : DEFAULT_GIF_DELAY_MS));
   const avg = fixed.reduce((a, b) => a + b, 0) / fixed.length;
   const fps = Math.min(MAX_FPS, Math.max(MIN_FPS, 1000 / avg));
   return Math.round(1000 / fps);
