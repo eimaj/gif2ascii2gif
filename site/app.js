@@ -230,7 +230,7 @@ function convert(src = source) {
   result = next;
   frameIndex = index;
   previewFrames = [];
-  if (first.data.length * grids.length <= PREVIEW_CACHE_BYTES) previewFrames[index] = first;
+  cacheFrame(index, first);
   paint(first);
   ui.canvas.style.width = `${first.width * s.scale}px`;
   ui.stage.classList.toggle('checker', s.background === 'transparent');
@@ -253,11 +253,16 @@ function paint(img) {
   ui.canvas.getContext('2d').putImageData(img, 0, 0);
 }
 
+// Keep a rendered preview frame only while every frame of the current result would fit the cache.
+function cacheFrame(i, img) {
+  if (img.data.length * result.grids.length <= PREVIEW_CACHE_BYTES) previewFrames[i] = img;
+}
+
 function drawFrame(i) {
   let img = previewFrames[i];
   if (!img) {
     img = frameImage(result, i, settings().background);
-    if (img.data.length * result.grids.length <= PREVIEW_CACHE_BYTES) previewFrames[i] = img;
+    cacheFrame(i, img);
   }
   paint(img);
 }
