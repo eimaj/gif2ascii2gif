@@ -230,7 +230,7 @@ const PREVIEW_CACHE_BYTES = 64 * 1024 * 1024;
 
 // The current conversion: ANSI frames plus parsed grids, shared by the preview and both exports.
 let result = null; // { w, h, ansi, grids, cols, rows, delayMs }
-let resampled = new Map(); // width → resampled RGB frames for the current source
+let resampled = null; // { w, frames }: the current source resampled to the last width used
 let previewFrames = []; // ImageData per frame, filled lazily when small enough
 let frameIndex = 0;
 let timer = 0;
@@ -250,8 +250,8 @@ function convert() {
   if (!source) return;
   const s = settings();
   const { w, h } = frameSize(source.width, source.height, s.width);
-  if (!resampled.has(w)) resampled.set(w, source.frames.map((f) => resampleArea(f, source.width, source.height, w, h)));
-  const ansi = convertFrames(resampled.get(w), w, h, { keepBg: s.keepBg, bgThreshold: s.bgThreshold });
+  if (resampled?.w !== w) resampled = { w, frames: source.frames.map((f) => resampleArea(f, source.width, source.height, w, h)) };
+  const ansi = convertFrames(resampled.frames, w, h, { keepBg: s.keepBg, bgThreshold: s.bgThreshold });
   const grids = ansi.map(parseAnsiFrame);
   result = { w, h, ansi, grids, ...gridBounds(grids), delayMs: source.delayMs };
   previewFrames = [];
@@ -304,7 +304,7 @@ for (const el of [ui.width, ui.threshold, ui.keepBg, ui.scale, ui.transparent, u
 
 function onSourceLoaded() {
   ui.placeholder.hidden = true;
-  resampled = new Map();
+  resampled = null;
   frameIndex = 0;
   convert();
   ui.downloadGif.disabled = false;
