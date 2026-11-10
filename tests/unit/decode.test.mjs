@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GIFEncoder } from '../../site/vendor/gifenc/gifenc.esm.js';
 import {
-  MAX_FRAMES, MAX_BYTES, MAX_PIXELS, MAX_TOTAL_PIXELS, LimitError, NotAGifError,
+  MAX_FRAMES, MAX_BYTES, MAX_PIXELS, MAX_TOTAL_PIXELS, MAX_ASPECT, LimitError, NotAGifError,
   decodeGif, resampleArea, flattenOnWhite, compositeFrames,
 } from '../../site/lib/decode.mjs';
-import { frameDelay } from '../../site/lib/core.mjs';
+import { frameDelay, frameSize } from '../../site/lib/core.mjs';
 
 const RED = [255, 0, 0], BLUE = [0, 0, 255], GREEN = [0, 255, 0], WHITE = [255, 255, 255];
 
@@ -148,4 +148,22 @@ test('compositeFrames: returns RGB frames, not full RGBA copies', () => {
   const [frame] = compositeFrames([patch], 2, 1);
   assert.ok(frame instanceof Uint8Array);
   assert.deepEqual([...frame], [1, 2, 3, 255, 255, 255]);
+});
+
+test('decodeGif: a source more than 5 times taller than wide throws an aspect LimitError', () => {
+  const bytes = declaring({ screen: [10, 2000] });
+  assert.throws(() => decodeGif(bytes), (err) => {
+    assert.ok(err instanceof LimitError);
+    assert.equal(err.kind, 'aspect');
+    assert.equal(err.limit, MAX_ASPECT);
+    assert.equal(err.actual, 200);
+    assert.match(err.message, /200\.0 times taller.*limit is 5/);
+    return true;
+  });
+});
+
+test('decodeGif: at the aspect limit the widest preview stays within 400 rows', () => {
+  const { frames, width, height } = decodeGif(declaring({ screen: [2, 10] }));
+  assert.equal(frames.length, 1);
+  assert.equal(frameSize(width, height, 160).h, 400);
 });

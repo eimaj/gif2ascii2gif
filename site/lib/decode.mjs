@@ -7,12 +7,15 @@ export const MAX_FRAMES = 300;
 export const MAX_BYTES = 20 * 1024 * 1024;
 export const MAX_PIXELS = 4096 * 4096; // per frame: the GIF's screen, and each frame's own rectangle
 export const MAX_TOTAL_PIXELS = 50_000_000; // across all frames, so decoded frames fit in a tab's memory
+// Height ÷ width. At the widest setting (160 columns) this caps the preview at 400 rows.
+export const MAX_ASPECT = 5;
 
 const LIMIT_MESSAGES = {
   frames: (actual, limit) => `This GIF has ${actual} frames; the limit is ${limit}.`,
   bytes: (actual, limit) => `This file is ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
   pixels: (actual, limit) => `Each frame of this GIF is ${formatMegapixels(actual)}; the limit is ${formatMegapixels(limit)}.`,
   total: (actual, limit) => `This GIF has ${formatMegapixels(actual)} across all its frames; the limit is ${formatMegapixels(limit)}.`,
+  aspect: (actual, limit) => `This GIF is ${actual.toFixed(1)} times taller than it is wide; the limit is ${limit}.`,
 };
 
 // Thrown when a GIF would take too much work to convert in a browser tab.
@@ -20,7 +23,7 @@ export class LimitError extends Error {
   constructor(kind, limit, actual) {
     super(LIMIT_MESSAGES[kind](actual, limit));
     this.name = 'LimitError';
-    this.kind = kind; // 'frames' | 'bytes' | 'pixels' | 'total'
+    this.kind = kind; // 'frames' | 'bytes' | 'pixels' | 'total' | 'aspect'
     this.limit = limit;
     this.actual = actual;
   }
@@ -78,6 +81,7 @@ export function decodeGif(buffer) {
   const { width, height } = gif.lsd;
   if (!width || !height) throw new NotAGifError('zero size');
   checkPixels(gif, width, height, frameCount);
+  if (height / width > MAX_ASPECT) throw new LimitError('aspect', MAX_ASPECT, height / width);
   let patches;
   try {
     patches = decompressFrames(gif, true);

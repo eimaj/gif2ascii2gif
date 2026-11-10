@@ -36,15 +36,22 @@ The page SHALL start with no GIF loaded and offer a "Try the demo" control that 
 - **THEN** the demo GIF is fetched, converted, and playing in the preview
 
 ### Requirement: Size limits
-The page SHALL refuse, without converting, a GIF with more than 300 frames, a file larger than 20 MB, a declared screen or frame rectangle larger than 4096×4096 pixels, or more than 50 megapixels across all frames, and SHALL state which limit was exceeded, the actual value, and that the limit keeps the browser tab responsive. The pixel limits SHALL be checked from the GIF's header before any frame is decompressed.
+The page SHALL refuse, without converting, a GIF with more than 300 frames or a file larger than 20 MB, and SHALL state which limit was exceeded, the actual value, and that the limit keeps the browser tab responsive.
 
 #### Scenario: Too many frames
 - **WHEN** a visitor loads a 450-frame GIF
 - **THEN** no conversion runs and the page says the GIF has 450 frames, the limit is 300, and why
 
+### Requirement: Pixel limits
+The page SHALL refuse, without converting and with the same kind of message as the size limits, a GIF whose declared screen or any frame rectangle is larger than 4096×4096 pixels, that has more than 50 megapixels across all frames, or whose screen is more than 5 times taller than it is wide. These limits SHALL be checked from the GIF's header before any frame is decompressed.
+
 #### Scenario: Tiny file declaring a huge image
 - **WHEN** a visitor loads a GIF under 100 bytes whose header declares a 60000×60000 screen
 - **THEN** no frame is decompressed and the page says the frame size in megapixels, the limit, and why
+
+#### Scenario: Very tall, narrow GIF
+- **WHEN** a visitor loads a 10×2000 GIF
+- **THEN** no conversion runs and the page says the GIF is 200 times taller than it is wide, the limit is 5, and why
 
 ### Requirement: Controls
 The page SHALL expose width (8–160 columns, default 40), background threshold (0–179, default 40), keep background (default off), export scale (1–8, default 2), and export background (transparent by default, or a hex color). Changing any control SHALL update the preview without reloading the GIF.
