@@ -13,6 +13,35 @@ export const FIELDS = {
   frames: { values: ['<25', '<50', '<100', '<=300', '>300'], about: 'the number of frames, as a bucket' },
 };
 
+export const MAX_EVENT_BYTES = 512;
+
+export function widthBucket(width) {
+  if (width <= 40) return '<=40';
+  if (width <= 80) return '<=80';
+  if (width <= 120) return '<=120';
+  return '<=160';
+}
+
+export function framesBucket(frames) {
+  if (frames < 25) return '<25';
+  if (frames < 50) return '<50';
+  if (frames < 100) return '<100';
+  if (frames <= 300) return '<=300';
+  return '>300';
+}
+
+// Returns null when `body` is a valid event, else a short reason.
+export function validateEvent(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return 'body must be a JSON object';
+  if (!Object.hasOwn(EVENTS, body.event)) return 'unknown event';
+  for (const [key, value] of Object.entries(body)) {
+    if (key === 'event') continue;
+    if (!Object.hasOwn(FIELDS, key)) return `unknown field ${key}`;
+    if (!FIELDS[key].values.includes(value)) return `bad value for ${key}`;
+  }
+  return null;
+}
+
 // The privacy note as a heading-free list of blocks: { p } paragraphs and { ul } lists of strings.
 export function privacyNote() {
   return [
