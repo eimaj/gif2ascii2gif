@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { tempDir, makeGif, probeGif } from '../helpers/fixtures.mjs';
+import { declaring } from '../helpers/gifs.mjs';
 
 const DEMO_URL = 'https://media.tenor.com/1iOUXZFLpBgAAAAM/dance-dancing.gif';
 
@@ -80,7 +81,18 @@ test('both downloads are named after the source and the GIF has every frame', as
   expect(info.width).toBe(w * 2);
 });
 
-test('a 301-frame GIF is blocked with the limit and the reason', async ({ page }) => {
+// Collect the body of every usage event the page sends.
+async function captureEvents(page) {
+  const bodies = [];
+  await page.route('**/api/event', async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 204 });
+  });
+  return bodies;
+}
+
+test('a 301-frame GIF is blocked with the limit and the reason, and counted', async ({ page }) => {
+  const bodies = await captureEvents(page);
   await page.goto('/');
   await page.setInputFiles('#file', tooMany);
   const message = page.locator('#message');
@@ -88,6 +100,15 @@ test('a 301-frame GIF is blocked with the limit and the reason', async ({ page }
   await expect(message).toContainText('limit is 300');
   await expect(message).toContainText('responsive');
   expect(await canvasWidth(page)).toBe(0);
+  await expect.poll(() => bodies).toEqual([{ event: 'blocked_too_large', input: 'file', frames: '>300' }]);
+});
+
+test('a pixel-limit refusal is counted without a frames bucket', async ({ page }) => {
+  const bodies = await captureEvents(page);
+  await page.goto('/');
+  await page.setInputFiles('#file', { name: 'huge.gif', mimeType: 'image/gif', buffer: Buffer.from(declaring({ screen: [60000, 60000] })) });
+  await expect(page.locator('#message')).toContainText('60000×60000 pixels');
+  await expect.poll(() => bodies).toEqual([{ event: 'blocked_too_large', input: 'file' }]);
 });
 
 test('a conversion error after a control change is shown and keeps the previous result', async ({ page }) => {
