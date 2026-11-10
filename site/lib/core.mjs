@@ -26,7 +26,9 @@ export function frameSize(srcWidth, srcHeight, width) {
   return { w: width, h: Math.max(1, Math.round(width * (srcHeight / srcWidth) * CHAR_ASPECT)) };
 }
 
-// Background = the most common color along the border of every frame.
+// Background = the most common color along the border of every frame. Border pixels are grouped
+// into 32-level-per-channel buckets so near-identical dithered shades count together; the result
+// is the mean color of the largest bucket.
 export function detectBackground(frames, w, h) {
   const buckets = new Map();
   const add = (buf, x, y) => {
