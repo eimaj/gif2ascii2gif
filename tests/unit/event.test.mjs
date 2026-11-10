@@ -57,6 +57,20 @@ test('400 for an unknown event', async () => {
   assert.equal(points.length, 0);
 });
 
+test('400 for a non-string event name, with nothing recorded', async () => {
+  for (const event of [['convert'], [['export_gif']], 1, null, { convert: 1 }]) {
+    const { env, points } = fakeEnv();
+    assert.equal(await call(post({ event }), env), 400, JSON.stringify(event));
+    assert.equal(points.length, 0);
+  }
+});
+
+test('400 for a non-string field value', async () => {
+  for (const input of [['file'], { file: 1 }, 1, null]) {
+    assert.equal(await call(post({ event: 'convert', input })), 400, JSON.stringify(input));
+  }
+});
+
 test('400 for a value outside its enum', async () => {
   assert.equal(await call(post({ event: 'convert', input: 'clipboard' })), 400);
   assert.equal(await call(post({ event: 'convert', width: '40' })), 400);

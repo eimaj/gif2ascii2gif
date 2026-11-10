@@ -13,6 +13,10 @@ The endpoint SHALL accept only these events: `convert`, `export_gif`, `export_pl
 - **WHEN** a request posts event `pageview`
 - **THEN** the response is 400 and nothing is recorded
 
+#### Scenario: Non-string event name
+- **WHEN** a request posts event `["convert"]`
+- **THEN** the response is 400 and nothing is recorded
+
 ### Requirement: Event fields
 Events SHALL carry only enumerated, coarse fields: `input` (`file`, `drop`, `url`, `demo`), `width` bucket (`<=40`, `<=80`, `<=120`, `<=160`), and `frames` bucket (`<25`, `<50`, `<100`, `<=300`, `>300`). A field outside its enum, or any extra field, SHALL be rejected with 400.
 

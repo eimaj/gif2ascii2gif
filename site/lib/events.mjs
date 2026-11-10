@@ -33,11 +33,12 @@ export function framesBucket(frames) {
 // Returns null when `body` is a valid event, else a short reason.
 export function validateEvent(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return 'body must be a JSON object';
-  if (!Object.hasOwn(EVENTS, body.event)) return 'unknown event';
+  // hasOwn stringifies its key, so ["convert"] would match without the type check.
+  if (typeof body.event !== 'string' || !Object.hasOwn(EVENTS, body.event)) return 'unknown event';
   for (const [key, value] of Object.entries(body)) {
     if (key === 'event') continue;
     if (!Object.hasOwn(FIELDS, key)) return `unknown field ${key}`;
-    if (!FIELDS[key].values.includes(value)) return `bad value for ${key}`;
+    if (typeof value !== 'string' || !FIELDS[key].values.includes(value)) return `bad value for ${key}`;
   }
   return null;
 }
