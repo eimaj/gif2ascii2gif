@@ -90,6 +90,16 @@ test('503 when the EVENTS binding is missing', async () => {
   assert.equal(await call(post({ event: 'convert' }), {}), 503);
 });
 
+test('503 with a logged error when the binding cannot write', async (t) => {
+  const logged = t.mock.method(console, 'error', () => {});
+  const env = { EVENTS: { writeDataPoint: () => { throw new TypeError('not an Analytics Engine binding'); } } };
+  const res = await onRequest({ request: post({ event: 'convert' }), env });
+  assert.equal(res.status, 503);
+  assert.equal(await res.text(), 'event storage error');
+  assert.equal(logged.mock.callCount(), 1);
+  assert.match(String(logged.mock.calls[0].arguments[1]), /not an Analytics Engine binding/);
+});
+
 test('204 records only the event and its enumerated fields', async () => {
   const { env, points } = fakeEnv();
   const status = await call(post({ event: 'convert', input: 'file', width: '<=40', frames: '<25' }, {

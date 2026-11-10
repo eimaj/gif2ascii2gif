@@ -51,9 +51,14 @@ export async function onRequest({ request, env }) {
 
   if (!env?.EVENTS) return reply(503, 'event storage not configured');
 
-  env.EVENTS.writeDataPoint({
-    blobs: [body.event, body.input ?? '', body.width ?? '', body.frames ?? ''],
-    indexes: [body.event],
-  });
+  try {
+    env.EVENTS.writeDataPoint({
+      blobs: [body.event, body.input ?? '', body.width ?? '', body.frames ?? ''],
+      indexes: [body.event],
+    });
+  } catch (err) {
+    console.error('event write failed', err);
+    return reply(503, 'event storage error');
+  }
   return new Response(null, { status: 204 });
 }
