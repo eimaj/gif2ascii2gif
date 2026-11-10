@@ -23,25 +23,36 @@ export class FetchTimeoutError extends Error {
 // Fetch a GIF by URL, giving up after `timeoutMs` and reading at most MAX_BYTES of the body,
 // whatever Content-Length says. An abort through `signal` is rethrown as it is.
 export async function fetchGif(url, signal, { fetch = globalThis.fetch, timeoutMs = FETCH_TIMEOUT_MS } = {}) {
-  const timeout = AbortSignal.timeout(timeoutMs);
-  const both = AbortSignal.any([signal, timeout]);
+  // One controller for both the caller's abort and the time limit, so browsers without
+  // AbortSignal.any (Safari before 17.4, Chrome before 116, Firefox before 124) work too.
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+  const onAbort = () => controller.abort(signal.reason);
+  if (signal.aborted) onAbort();
+  else signal.addEventListener('abort', onAbort, { once: true });
   const failed = (err) => {
     if (signal.aborted) return err;
-    if (timeout.aborted) return new FetchTimeoutError({ cause: err });
+    if (timedOut) return new FetchTimeoutError({ cause: err });
     return null;
   };
-  let res;
   try {
-    res = await fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', signal: both });
-  } catch (err) {
-    throw failed(err) ?? new FetchBlockedError({ cause: err });
-  }
-  if (!res.ok) throw new Error(`The server answered ${res.status} ${res.statusText} for that URL.`);
-  const length = Number(res.headers.get('content-length'));
-  if (length) checkFileSize(length);
-  try {
-    return await readCapped(res.body);
-  } catch (err) {
-    throw failed(err) ?? err;
+    let res;
+    try {
+      res = await fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal });
+    } catch (err) {
+      throw failed(err) ?? new FetchBlockedError({ cause: err });
+    }
+    if (!res.ok) throw new Error(`The server answered ${res.status} ${res.statusText} for that URL.`);
+    const length = Number(res.headers.get('content-length'));
+    if (length) checkFileSize(length);
+    try {
+      return await readCapped(res.body);
+    } catch (err) {
+      throw failed(err) ?? err;
+    }
+  } finally {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', onAbort);
   }
 }

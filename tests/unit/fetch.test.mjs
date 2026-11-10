@@ -61,6 +61,19 @@ test('fetchGif: a declared Content-Length over the limit throws before reading t
   await assert.rejects(fetchGif(URL_, new AbortController().signal, { fetch: big }), (err) => err instanceof LimitError && err.kind === 'bytes');
 });
 
+test('fetchGif: works where AbortSignal.any and AbortSignal.timeout do not exist', async () => {
+  const { any, timeout } = AbortSignal;
+  AbortSignal.any = undefined;
+  AbortSignal.timeout = undefined;
+  try {
+    await assert.rejects(fetchGif(URL_, new AbortController().signal, { fetch: hangingFetch, timeoutMs: 20 }), FetchTimeoutError);
+    const ok = async () => new Response(new Uint8Array([7]));
+    assert.deepEqual([...new Uint8Array(await fetchGif(URL_, new AbortController().signal, { fetch: ok }))], [7]);
+  } finally {
+    Object.assign(AbortSignal, { any, timeout });
+  }
+});
+
 test('fetchGif: returns the body of a small response', async () => {
   const ok = async () => new Response(new Uint8Array([1, 2, 3]));
   assert.deepEqual([...new Uint8Array(await fetchGif(URL_, new AbortController().signal, { fetch: ok }))], [1, 2, 3]);
