@@ -8,6 +8,7 @@ const DEMO_URL = 'https://media.tenor.com/1iOUXZFLpBgAAAAM/dance-dancing.gif';
 const dir = tempDir('gif2ascii-e2e-');
 const small = makeGif(join(dir, 'small.gif'), { frames: 8, fps: 10 });
 const square = makeGif(join(dir, 'square.gif'), { frames: 4, fps: 10, width: 40, height: 40 });
+const long = makeGif(join(dir, 'long.gif'), { frames: 200, fps: 10 });
 const tooMany = makeGif(join(dir, 'too-many.gif'), { frames: 301, fps: 10, width: 16, height: 16 });
 
 const canvasWidth = (page) => page.locator('#preview').evaluate((c) => c.width);
@@ -130,6 +131,25 @@ test('events fall back to fetch, and a failed event never reaches the visitor', 
   await expect.poll(() => attempts).toEqual(['convert', 'export_player', 'export_gif']);
   await expect(page.locator('#message')).not.toHaveClass(/error/);
   await expect(page.locator('#message')).toContainText('Saved small.gif');
+});
+
+test('loading another GIF during an encode keeps that export and its event intact', async ({ page }) => {
+  const bodies = [];
+  await page.route('**/api/event', async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 204 });
+  });
+  await upload(page, long);
+  const downloaded = page.waitForEvent('download');
+  await page.click('#download-gif');
+  await expect(page.locator('#message')).toContainText('Encoding GIF');
+  await drop(page, small);
+  await expect(page.locator('#message')).toContainText('Converted small.gif');
+  await expect(page.locator('#download-gif')).toBeDisabled();
+  const gif = await downloaded;
+  expect(gif.suggestedFilename()).toBe('long.gif');
+  await expect(page.locator('#download-gif')).toBeEnabled();
+  await expect.poll(() => bodies.find((b) => b.event === 'export_gif')).toEqual({ event: 'export_gif', input: 'file', width: '<=40', frames: '<=300' });
 });
 
 test('a file that is not a GIF keeps the previous result', async ({ page }) => {

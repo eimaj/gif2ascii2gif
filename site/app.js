@@ -336,7 +336,7 @@ function scheduleConvert() {
 function onSourceLoaded(src) {
   convert(src);
   ui.placeholder.hidden = true;
-  ui.downloadGif.disabled = false;
+  ui.downloadGif.disabled = encoding;
   ui.downloadPlayer.disabled = false;
 }
 
@@ -377,20 +377,27 @@ async function encodeGif({ grids, cols, rows, delayMs }, { background, scale }, 
   return enc.bytes();
 }
 
+// One encode at a time; everything about it (frames, settings, name, event fields) is fixed at click time.
+let encoding = false;
+
 ui.downloadGif.addEventListener('click', async () => {
-  if (!result) return;
+  if (!result || encoding) return;
   const snapshot = result;
+  const s = settings();
   const name = source.name;
+  const fields = usageFields();
+  encoding = true;
   ui.downloadGif.disabled = true;
   try {
-    const bytes = await encodeGif(snapshot, settings(), (i, n) => showMessage(`Encoding GIF… frame ${i} of ${n}`));
+    const bytes = await encodeGif(snapshot, s, (i, n) => showMessage(`Encoding GIF… frame ${i} of ${n}`));
     download(new Blob([bytes], { type: 'image/gif' }), `${name}.gif`);
     showMessage(`Saved ${name}.gif (${snapshot.grids.length} frames).`);
-    onExport('export_gif');
+    sendEvent('export_gif', fields);
   } catch (err) {
     console.error(err);
     showMessage(`Could not encode the GIF: ${err.message}`, 'error');
   } finally {
+    encoding = false;
     ui.downloadGif.disabled = false;
   }
 });
@@ -399,12 +406,8 @@ ui.downloadPlayer.addEventListener('click', () => {
   if (!result) return;
   download(new Blob([playerSource(result.ansi, result.delayMs)], { type: 'text/javascript' }), `${source.name}.mjs`);
   showMessage(`Saved ${source.name}.mjs. Run it with: node ${source.name}.mjs`);
-  onExport('export_player');
+  sendEvent('export_player', usageFields());
 });
-
-function onExport(event) {
-  sendEvent(event, usageFields());
-}
 
 // ---- Page content ------------------------------------------------------------------------
 
