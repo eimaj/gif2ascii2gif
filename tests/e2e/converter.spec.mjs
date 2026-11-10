@@ -259,11 +259,20 @@ test('dropping a GIF on the page converts it', async ({ page }) => {
   expect(await canvasWidth(page)).toBeGreaterThan(0);
 });
 
-test('the demo is fetched by URL and converted', async ({ page }) => {
+test('the demo is fetched by URL directly and converted, and its URL is never proxied or counted', async ({ page }) => {
+  const bodies = await captureEvents(page);
+  const carriers = [];
+  page.on('request', (req) => {
+    const direct = req.method() === 'GET' && req.url() === DEMO_URL;
+    const mentions = req.url().includes('tenor') || (req.postData() ?? '').includes('tenor');
+    if (mentions && !direct) carriers.push(`${req.method()} ${req.url()}`);
+  });
   await page.goto('/');
   await routeDemo(page, square);
   await page.click('#demo');
   await expect(page.locator('#message')).toContainText('Converted dance-dancing.gif: 4 frames');
+  await expect.poll(() => bodies).toEqual([{ event: 'convert', input: 'demo', width: '<=40', frames: '<25' }]);
+  expect(carriers).toEqual([]);
 });
 
 test('a newer load wins over a slower earlier one', async ({ page }) => {
