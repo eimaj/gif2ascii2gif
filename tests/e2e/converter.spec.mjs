@@ -99,6 +99,39 @@ test('a conversion error after a control change is shown and keeps the previous 
   expect(pageErrors).toEqual([]);
 });
 
+test('usage events carry exactly the expected bodies', async ({ page }) => {
+  const bodies = [];
+  await page.route('**/api/event', async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: 204 });
+  });
+  await upload(page, small);
+  await Promise.all([page.waitForEvent('download'), page.click('#download-player')]);
+  await Promise.all([page.waitForEvent('download'), page.click('#download-gif')]);
+  const fields = { input: 'file', width: '<=40', frames: '<25' };
+  await expect.poll(() => bodies.length).toBe(3);
+  expect(bodies).toEqual([
+    { event: 'convert', ...fields },
+    { event: 'export_player', ...fields },
+    { event: 'export_gif', ...fields },
+  ]);
+});
+
+test('events fall back to fetch, and a failed event never reaches the visitor', async ({ page }) => {
+  await page.addInitScript(() => { navigator.sendBeacon = () => false; });
+  const attempts = [];
+  await page.route('**/api/event', async (route) => {
+    attempts.push(route.request().postDataJSON().event);
+    await route.abort();
+  });
+  await upload(page, small);
+  await Promise.all([page.waitForEvent('download'), page.click('#download-player')]);
+  await Promise.all([page.waitForEvent('download'), page.click('#download-gif')]);
+  await expect.poll(() => attempts).toEqual(['convert', 'export_player', 'export_gif']);
+  await expect(page.locator('#message')).not.toHaveClass(/error/);
+  await expect(page.locator('#message')).toContainText('Saved small.gif');
+});
+
 test('the demo is fetched by URL, read through the size-capped reader, and converted', async ({ page }) => {
   await page.goto('/');
   await routeDemo(page, square);
