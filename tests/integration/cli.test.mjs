@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_WIDTH, DEFAULT_BG_THRESHOLD } from '../../site/lib/core.mjs';
 import { parsePlayer } from '../../site/lib/player.mjs';
 import { CELL_W, CELL_H } from '../../site/lib/glyphs.mjs';
-import { MARGIN } from '../../site/lib/render.mjs';
+import { MARGIN, MAX_SCALE } from '../../site/lib/render.mjs';
 import { tempDir, makeGif, probeGif, firstFrameAlpha } from '../helpers/fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -51,4 +52,16 @@ test('CLI: solid --bg gives a fully opaque GIF', () => {
   run('gif2ascii.mjs', [gif, '-o', player]);
   run('ascii2gif.mjs', [player, '--bg', '000000', '--scale', '1', '-o', out]);
   assert.ok(firstFrameAlpha(out).every((a) => a === 255));
+});
+
+test('CLI: option checks use the shared limits and background parser', () => {
+  const fail = (args) => {
+    const r = spawnSync('node', [join(ROOT, 'ascii2gif.mjs'), 'x.mjs', ...args], { encoding: 'utf8' });
+    assert.equal(r.status, 1);
+    return r.stderr;
+  };
+  assert.match(fail(['--scale', String(MAX_SCALE + 1)]), new RegExp(`--scale must be an integer 1-${MAX_SCALE}`));
+  assert.match(fail(['--bg', 'red']), /--bg: background must be "transparent" or a 6-digit hex color, got red/);
+  const usage = spawnSync('node', [join(ROOT, 'gif2ascii.mjs')], { encoding: 'utf8' }).stderr;
+  assert.match(usage, new RegExp(`--width ${DEFAULT_WIDTH}\\] \\[--bg-threshold ${DEFAULT_BG_THRESHOLD}\\]`));
 });

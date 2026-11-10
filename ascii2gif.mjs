@@ -3,7 +3,7 @@
 // Usage: node ascii2gif.mjs <player.mjs> [--scale 2] [--bg transparent|RRGGBB] [-o out.gif]
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { renderFrames } from './site/lib/render.mjs';
+import { MAX_SCALE, parseBackground, renderFrames } from './site/lib/render.mjs';
 import { parsePlayer } from './site/lib/player.mjs';
 
 const USAGE = 'usage: node ascii2gif.mjs <player.mjs> [--scale 2] [--bg transparent|RRGGBB] [-o out.gif]';
@@ -19,9 +19,13 @@ function parseArgs(argv) {
     else opts.input = a;
   }
   if (!opts.input) throw new Error(USAGE);
-  if (!Number.isInteger(opts.scale) || opts.scale < 1 || opts.scale > 8) throw new Error(`--scale must be an integer 1-8, got ${opts.scale}`);
-  if (opts.bg !== 'transparent' && !/^[0-9a-fA-F]{6}$/.test(opts.bg)) {
-    throw new Error(`--bg must be "transparent" or a 6-digit hex color, got ${opts.bg}`);
+  if (!Number.isInteger(opts.scale) || opts.scale < 1 || opts.scale > MAX_SCALE) {
+    throw new Error(`--scale must be an integer 1-${MAX_SCALE}, got ${opts.scale}`);
+  }
+  try {
+    parseBackground(opts.bg);
+  } catch (err) {
+    throw new Error(`--bg: ${err.message}`, { cause: err });
   }
   return opts;
 }

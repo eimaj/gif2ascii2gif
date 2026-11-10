@@ -5,15 +5,17 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MAX_BG_DISTANCE, frameSize, frameDelay, convertFrames } from './site/lib/core.mjs';
+import {
+  DEFAULT_WIDTH, DEFAULT_BG_THRESHOLD, MAX_BG_DISTANCE, frameSize, frameDelay, convertFrames,
+} from './site/lib/core.mjs';
 import { playerSource } from './site/lib/player.mjs';
 
 const PLAYERS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'players');
 
-const USAGE = 'usage: node gif2ascii.mjs <gif-url> [--width 40] [--bg-threshold 40] [--keep-bg] [-o out.mjs]';
+const USAGE = `usage: node gif2ascii.mjs <gif-url> [--width ${DEFAULT_WIDTH}] [--bg-threshold ${DEFAULT_BG_THRESHOLD}] [--keep-bg] [-o out.mjs]`;
 
 function parseArgs(argv) {
-  const opts = { width: 40, out: null, input: null, keepBg: false, bgThreshold: 40 };
+  const opts = { width: DEFAULT_WIDTH, out: null, input: null, keepBg: false, bgThreshold: DEFAULT_BG_THRESHOLD };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--width') opts.width = Number(argv[++i]);
