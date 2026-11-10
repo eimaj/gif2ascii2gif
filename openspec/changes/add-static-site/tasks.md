@@ -16,7 +16,7 @@
 
 ## 3. Browser converter
 
-- [ ] 3.1 Create `site/index.html`, `site/styles.css` (monospace, dark default, light via `prefers-color-scheme`, phone-width safe), and `site/app.js` skeleton with input area (file picker, drop zone, URL field, "Try the demo"), controls, canvas, and download buttons. Verify: `npm run serve`, page loads with no console errors at desktop and 375px width.
+- [x] 3.1 Create `site/index.html`, `site/styles.css` (monospace, dark default, light via `prefers-color-scheme`, phone-width safe), and `site/app.js` skeleton with input area (file picker, drop zone, URL field, "Try the demo"), controls, canvas, and download buttons. Verify: `npm run serve`, page loads with no console errors at desktop and 375px width.
 - [ ] 3.2 Implement decoding in `site/lib/decode.mjs`: gifuct-js parse, size-limit checks (20 MB, 300 frames) before decompressing, disposal-aware compositing, area resampling, frame-rate calculation. Verify: unit test with a generated GIF using disposal 2 and 3 matches expected composited pixels; over-limit inputs throw a typed limit error with the actual value.
 - [ ] 3.3 Wire inputs, errors, and blocking: CORS failure message, not-a-GIF message that keeps the previous result, limit-block message stating limit, actual value, and why. Verify: manual check of each message; covered again in E2E.
 - [ ] 3.4 Wire controls and the canvas preview (decode once, re-convert on control change, loop at source fps, checkerboard when transparent). Verify: changing width updates the canvas size live.

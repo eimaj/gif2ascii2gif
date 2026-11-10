@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>gif2ascii</title>
+  <meta name="description" content="Turn a GIF into a colored-ASCII animation and back, right in your browser. Nothing is uploaded.">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="masthead">
+    <h1>gif2ascii</h1>
+    <p class="tagline">GIF → colored ASCII → GIF, in your browser. Nothing is uploaded.</p>
+  </header>
+
+  <main>
+    <section id="converter" aria-labelledby="converter-title">
+      <h2 id="converter-title" class="visually-hidden">Converter</h2>
+
+      <div id="dropzone" class="dropzone">
+        <p>Drop a GIF anywhere on the page, or</p>
+        <div class="inputs">
+          <label class="button" for="file">Choose a file<input id="file" type="file" accept="image/gif,.gif" class="visually-hidden"></label>
+          <button id="demo" type="button">Try the demo</button>
+        </div>
+        <form id="url-form" class="url-form">
+          <label for="url" class="visually-hidden">GIF URL</label>
+          <input id="url" type="url" placeholder="https://…/animation.gif" autocomplete="off" spellcheck="false">
+          <button type="submit">Convert URL</button>
+        </form>
+      </div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <fieldset id="controls" class="controls">
+        <legend>Settings</legend>
+        <label for="width">Width <output id="width-out" for="width">40</output> columns</label>
+        <input id="width" type="range" min="8" max="160" step="1" value="40">
+
+        <label for="threshold">Background threshold <output id="threshold-out" for="threshold">40</output></label>
+        <input id="threshold" type="range" min="0" max="179" step="1" value="40">
+
+        <label class="check"><input id="keep-bg" type="checkbox"> Keep background</label>
+
+        <label for="scale">Export scale <output id="scale-out" for="scale">2</output>×</label>
+        <input id="scale" type="range" min="1" max="8" step="1" value="2">
+
+        <label class="check"><input id="transparent" type="checkbox" checked> Transparent export background</label>
+        <label for="bg-color">Export background color</label>
+        <input id="bg-color" type="color" value="#000000" disabled>
+      </fieldset>
+
+      <figure class="preview">
+        <div id="stage" class="stage checker">
+          <canvas id="preview" width="0" height="0" aria-label="ASCII animation preview"></canvas>
+          <p id="placeholder" class="placeholder">No GIF loaded yet.</p>
+        </div>
+        <figcaption id="info" class="info"></figcaption>
+      </figure>
+
+      <div class="downloads">
+        <button id="download-gif" type="button" disabled>Download GIF</button>
+        <button id="download-player" type="button" disabled>Download player (.mjs)</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
