@@ -47,6 +47,29 @@ test('413 when the body is longer than its declared length allows', async () => 
   assert.equal(await call(request), 413);
 });
 
+test('413 from a declared Content-Length over the limit, before reading the body', async () => {
+  const { env, points } = fakeEnv();
+  const request = post({ event: 'convert' }, { headers: { 'Content-Length': '513' } });
+  assert.equal(request.headers.get('Content-Length'), '513');
+  assert.equal(await call(request, env), 413);
+  assert.equal(points.length, 0);
+});
+
+test('204 when a correct Content-Length is declared, as real beacons do', async () => {
+  const { env, points } = fakeEnv();
+  const body = JSON.stringify({ event: 'convert' });
+  const request = post(body, { headers: { 'Content-Length': String(body.length) } });
+  assert.equal(await call(request, env), 204);
+  assert.equal(points.length, 1);
+});
+
+test('400 for a body that is not valid UTF-8', async () => {
+  const { env, points } = fakeEnv();
+  const request = new Request(URL_, { method: 'POST', headers: { Origin: ORIGIN }, body: new Uint8Array([0xff, 0xfe]) });
+  assert.equal(await call(request, env), 400);
+  assert.equal(points.length, 0);
+});
+
 test('400 for bad JSON', async () => {
   assert.equal(await call(post('{nope')), 400);
 });
