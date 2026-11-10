@@ -48,6 +48,7 @@ test('decodeGif: more than 300 frames throws a frames LimitError with the actual
 test('decodeGif: oversized input throws a bytes LimitError before parsing', () => {
   const big = new Uint8Array(MAX_BYTES + 1);
   assert.throws(() => decodeGif(big), (err) => err instanceof LimitError && err.kind === 'bytes' && err.actual === MAX_BYTES + 1);
+  assert.equal(new LimitError('bytes', MAX_BYTES, 25 * 1024 * 1024).message, 'This file is 25.0 MB; the limit is 20.0 MB.');
 });
 
 test('decodeGif: a tiny GIF declaring a huge screen throws a pixels LimitError before allocating', () => {
@@ -174,6 +175,8 @@ test('LimitError: a value just over a limit never reads as equal to it', () => {
   assert.match(new LimitError('total', MAX_TOTAL_PIXELS, 50_000_001).message, /50,000,001 pixels.*limit is 50,000,000/);
   assert.match(new LimitError('aspect', MAX_ASPECT, 501 / 100).message, /5\.1 times taller.*limit is 5\./);
   assert.match(new LimitError('aspect', MAX_ASPECT, 5.1).message, /5\.1 times taller/);
+  assert.match(new LimitError('bytes', MAX_BYTES, MAX_BYTES + 1).message, /^This file is 20\.1 MB; the limit is 20\.0 MB\.$/);
+  assert.match(new LimitError('download', MAX_BYTES, MAX_BYTES + 1).message, /stopped after 20\.1 MB; the limit is 20\.0 MB/);
 });
 
 test('decodeGif: non-GIF input throws NotAGifError', () => {

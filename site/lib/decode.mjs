@@ -48,8 +48,9 @@ export class NotAGifError extends Error {
   }
 }
 
+// Rounded up, so a size just over a limit never reads as equal to it.
 export function formatBytes(n) {
-  return n >= 1024 * 1024 ? `${(n / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`;
+  return n >= 1024 * 1024 ? `${(Math.ceil(n / (1024 * 1024) * 10) / 10).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`;
 }
 
 export function checkFileSize(bytes) {
