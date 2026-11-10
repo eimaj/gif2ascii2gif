@@ -152,6 +152,15 @@ test('loading another GIF during an encode keeps that export and its event intac
   await expect.poll(() => bodies.find((b) => b.event === 'export_gif')).toEqual({ event: 'export_gif', input: 'file', width: '<=40', frames: '<=300' });
 });
 
+test('download names drop shell metacharacters', async ({ page }) => {
+  await page.goto('/');
+  await page.setInputFiles('#file', { name: '-x$(touch p).gif', mimeType: 'image/gif', buffer: readFileSync(small) });
+  await expect(page.locator('#message')).toContainText('Converted x-touch-p.gif');
+  const [player] = await Promise.all([page.waitForEvent('download'), page.click('#download-player')]);
+  expect(player.suggestedFilename()).toBe('x-touch-p.mjs');
+  await expect(page.locator('#message')).toContainText('Run it with: node x-touch-p.mjs');
+});
+
 test('a file that is not a GIF keeps the previous result', async ({ page }) => {
   await upload(page, small);
   const width = await canvasWidth(page);

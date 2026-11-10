@@ -74,10 +74,12 @@ function setBusy(busy) {
   for (const el of [ui.file, ui.demo, ui.url, ...ui.urlForm.querySelectorAll('button')]) el.disabled = busy;
 }
 
-// Download-safe base name: the source's file name without `.gif`, like the CLI.
+// Download- and shell-safe base name: the source's file name without `.gif`, like the CLI, keeping
+// only letters, digits, `.`, `_` and `-`, and never starting with `-` or `.` (it is shown in a
+// "node <name>.mjs" command).
 function baseName(str) {
   const last = str.split(/[/\\]/).filter(Boolean).pop() ?? '';
-  return last.replace(/\.gif$/i, '').replace(/[\x00-\x1f/\\:*?"<>|]+/g, '-').trim() || 'animation';
+  return last.replace(/\.gif$/i, '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+|-+$/g, '') || 'animation';
 }
 
 // URL path with percent-escapes decoded; malformed escapes stay as written.
