@@ -64,7 +64,11 @@ The player SHALL be a single ES module that contains its frames and frame delay,
 - **THEN** the GIF has the same frame count and frame rate as the player
 
 ### Requirement: CLI and site parity
-The CLI and the browser converter SHALL produce byte-identical player files for the same source frames and options. Both SHALL emit one frame per GIF frame and SHALL derive the player delay with one shared rule: the average of the GIF's per-frame delays, with delays under 20 ms counted as 100 ms, clamped to 1–60 fps.
+The CLI and the browser converter SHALL produce byte-identical player files for the same source frames and options. Both SHALL emit one frame per GIF frame and SHALL derive the player delay with one shared rule: the average of the GIF's per-frame delays, with delays under 20 ms counted as 100 ms, clamped to 1–60 fps. A GIF with a frame outside its screen SHALL be refused by both, so neither emits fewer frames than the GIF has.
+
+#### Scenario: Frame outside the screen
+- **WHEN** a GIF has a frame that lies wholly outside its screen
+- **THEN** the site refuses it and the CLI exits with an error instead of writing a player
 
 #### Scenario: Same input, same player
 - **WHEN** the same decoded frames are converted with the same width and background options by the CLI code path and the site code path

@@ -2,13 +2,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { frameSize, convertFrames } from '../../site/lib/core.mjs';
-import { decodeGif } from '../../site/lib/decode.mjs';
+import { decodeGif, LimitError } from '../../site/lib/decode.mjs';
 import { playerSource, parsePlayer } from '../../site/lib/player.mjs';
 import { tempDir, makeGif, probeGif } from '../helpers/fixtures.mjs';
+import { RED, BLUE, encode, imageDescriptorOffsets } from '../helpers/gifs.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -75,3 +76,24 @@ for (const { fps, frames, nominalMs } of RATES) {
     assert.ok(Math.abs(player.delayMs - nominalMs) <= 5, `delay ${player.delayMs} ms, expected about ${nominalMs}`);
   });
 }
+
+test('parity: a GIF with a frame wholly outside its screen is refused by both the CLI and the site', () => {
+  const full = { w: 16, h: 16, palette: [RED, BLUE], index: Array.from({ length: 256 }, (_, i) => i % 2) };
+  const bytes = encode([full, { w: 8, h: 8, palette: [BLUE, RED], index: Array(64).fill(0) }, full]);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+  const second = imageDescriptorOffsets(bytes)[1];
+  view.setUint16(second + 1, 40, true);
+  view.setUint16(second + 3, 40, true);
+  const gif = join(tempDir(), 'offscreen.gif');
+  writeFileSync(gif, bytes);
+
+  assert.throws(() => decodeGif(bytes), (err) => err instanceof LimitError && err.kind === 'bounds');
+  assert.throws(
+    () => execFileSync('node', [join(ROOT, 'gif2ascii.mjs'), gif, '-o', join(dirname(gif), 'cli.mjs')], { stdio: 'pipe' }),
+    (err) => {
+      assert.equal(err.status, 1);
+      assert.match(err.stderr.toString(), /decoded 2 of the GIF's 3 frames.*outside the GIF's screen/);
+      return true;
+    },
+  );
+});

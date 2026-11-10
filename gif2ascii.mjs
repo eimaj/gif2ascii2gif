@@ -45,7 +45,7 @@ function probe(input) {
   if (!s) throw new Error(`no video stream found in ${input}`);
   const [num, den] = s.time_base.split('/').map(Number);
   const delays = packets.map((p) => (Number(p.duration) * num * 1000) / den);
-  return { width: s.width, height: s.height, delayMs: frameDelay(delays) };
+  return { width: s.width, height: s.height, frameCount: packets.length, delayMs: frameDelay(delays) };
 }
 
 // One RGB frame per GIF frame (no frame-rate resampling), scaled with area averaging.
@@ -69,6 +69,10 @@ function main() {
   const src = probe(opts.input);
   const { w, h } = frameSize(src.width, src.height, opts.width);
   const raw = extractFrames(opts.input, w, h);
+  // ffmpeg drops a frame that lies wholly outside the GIF's screen; the site refuses such GIFs, so do the same.
+  if (raw.length !== src.frameCount) {
+    throw new Error(`ffmpeg decoded ${raw.length} of the GIF's ${src.frameCount} frames, most likely because a frame lies outside the GIF's screen, which is not supported`);
+  }
   const frames = convertFrames(raw, w, h, { keepBg: opts.keepBg, bgThreshold: opts.bgThreshold });
   const name = basename(new URL(opts.input, 'file:///').pathname).replace(/\.gif$/i, '') || 'animation';
   const out = opts.out ?? join(PLAYERS_DIR, `${name}.mjs`);
