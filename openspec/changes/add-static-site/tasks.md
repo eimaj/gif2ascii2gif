@@ -2,7 +2,7 @@
 
 ## 1. Shared conversion core
 
-- [ ] 1.1 Create `site/lib/core.mjs` (ramp, frame sizing, `detectBackground`, `pickChar`, `frameToAnsi`) and `site/lib/glyphs.mjs`, moved from the CLI scripts with no behavior change, using only typed arrays (no `Buffer`, no `node:` imports). Verify: `node --test tests/unit/core.test.mjs` covers sizing (220×366 at 40 → 40×33), white-background detection, threshold and `@`-at-180 picking, keep-bg luminance picking, and one escape per same-color run.
+- [x] 1.1 Create `site/lib/core.mjs` (ramp, frame sizing, `detectBackground`, `pickChar`, `frameToAnsi`) and `site/lib/glyphs.mjs`, moved from the CLI scripts with no behavior change, using only typed arrays (no `Buffer`, no `node:` imports). Verify: `node --test tests/unit/core.test.mjs` covers sizing (220×366 at 40 → 40×33), white-background detection, threshold and `@`-at-180 picking, keep-bg luminance picking, and one escape per same-color run.
 - [ ] 1.2 Create `site/lib/render.mjs` (`parseAnsiFrame`, `renderFrameRGBA` with margin, scale, transparent or hex background) and `site/lib/player.mjs` (`playerSource`). Verify: unit tests for glyph coverage of every ramp character, unknown-character error, transparent vs solid alpha, scale dimensions, and player text containing `FRAMES`/`DELAY_MS`.
 - [ ] 1.3 Switch `gif2ascii.mjs` and `ascii2gif.mjs` to import from `site/lib/`. Verify: regenerate `players/dance-dancing.mjs` and its GIF and confirm the player is byte-identical to one generated before the change (save the before copy first).
 - [ ] 1.4 Add `tests/integration/cli.test.mjs`: build a small GIF with ffmpeg `lavfi` (no network), run both CLIs, and check frames, dimensions, and transparency with `ffprobe`. Verify: `node --test tests/integration` passes.
