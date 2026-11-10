@@ -42,7 +42,7 @@ package.json               # devDependencies: @playwright/test only
 4. Run the shared core (`detectBackground`, `pickChar`, `frameToAnsi`) to get ANSI frames.
 5. Preview and export both call `renderFrameRGBA` on the parsed ANSI frames.
 
-Frame rate: average of the GIF's per-frame delays (in ms, with delays under 20 ms treated as 100 ms, as browsers do), clamped to 1–60 fps, by `frameDelay` in `site/lib/core.mjs`. The CLI reads the same per-frame delays with ffprobe and calls the same function, and extracts one frame per GIF frame (no `fps=` resample), so both paths produce the same frame count and the same fixed player delay.
+Frame rate: average of the GIF's per-frame delays (in ms, with delays under 20 ms treated as 100 ms, as browsers do), clamped to 1–60 fps, by `frameDelay` in `site/lib/core.mjs`. The CLI reads the same per-frame delays with ffprobe and calls the same function, and extracts one frame per GIF frame (no `fps=` resample; `-fps_mode passthrough`, which needs ffmpeg 5.1 or later), so both paths produce the same frame count and the same fixed player delay.
 
 Parity scope: the CLI decodes and resamples with ffmpeg, so CLI and site pixels can differ slightly. Parity is guaranteed from decoded-and-resampled frames onward (spec: "CLI and site parity"), which is where all the shared logic lives.
 

@@ -11,7 +11,7 @@ Turn any GIF into a colored-ASCII animation that plays in your terminal. Then ch
 ## Requirements
 
 - Node 18+
-- `ffmpeg` and `ffprobe` on your PATH (only for generating, not for playing)
+- `ffmpeg` and `ffprobe` 5.1 or later on your PATH (only for generating, not for playing; older versions lack `-fps_mode`)
 - A truecolor terminal (`COLORTERM=truecolor`)
 
 ## Generate some ASCII from your favourite GIF
