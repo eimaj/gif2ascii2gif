@@ -85,11 +85,12 @@ function decodePath(path) {
   }
 }
 
-async function fetchGif(url) {
+async function fetchGif(url, signal) {
   let res;
   try {
-    res = await fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' });
+    res = await fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', signal });
   } catch (err) {
+    if (signal.aborted) throw err;
     throw new FetchBlockedError({ cause: err });
   }
   if (!res.ok) throw new Error(`The server answered ${res.status} ${res.statusText} for that URL.`);
@@ -111,22 +112,40 @@ function errorMessage(err) {
   return `Something went wrong: ${err.message}`;
 }
 
+// Each load gets a generation number; a newer load aborts the older one, and only the newest
+// load may change the result, the message, or the busy state.
+let loadGen = 0;
+let loadController = null;
+
 // Read, decode, and convert one input. Errors leave the previous result in place.
 async function load(getBuffer, { name, input }) {
+  const gen = ++loadGen;
+  loadController?.abort();
+  const controller = new AbortController();
+  loadController = controller;
   setBusy(true);
   showMessage(`Loading ${name}.gif…`);
   try {
-    const decoded = decodeGif(await getBuffer());
+    const buffer = await getBuffer(controller.signal);
+    if (gen !== loadGen) return;
+    const decoded = decodeGif(buffer);
     source = { ...decoded, name, input };
     onSourceLoaded();
     sendEvent('convert', usageFields());
     showMessage(`Converted ${name}.gif: ${decoded.frames.length} frames, ${decoded.width}×${decoded.height} px.`);
   } catch (err) {
+    if (gen !== loadGen) {
+      console.debug(`load of ${name}.gif superseded by a newer load`, err);
+      return;
+    }
     if (!(err instanceof LimitError || err instanceof NotAGifError || err instanceof FetchBlockedError)) console.error(err);
     showMessage(errorMessage(err), 'error');
     if (err instanceof LimitError) onBlocked(err, input);
   } finally {
-    setBusy(false);
+    if (gen === loadGen) {
+      loadController = null;
+      setBusy(false);
+    }
   }
 }
 
@@ -149,7 +168,7 @@ function loadUrl(raw, input) {
     showMessage('Use an https:// URL.', 'error');
     return;
   }
-  return load(() => fetchGif(url.href), { name: baseName(decodePath(url.pathname)), input });
+  return load((signal) => fetchGif(url.href, signal), { name: baseName(decodePath(url.pathname)), input });
 }
 
 ui.file.addEventListener('change', () => {
