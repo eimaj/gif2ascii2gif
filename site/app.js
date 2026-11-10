@@ -42,8 +42,13 @@ function syncOutputs() {
   ui.threshold.disabled = ui.keepBg.checked;
 }
 
-for (const el of [ui.width, ui.threshold, ui.keepBg, ui.scale, ui.transparent, ui.bgColor]) {
-  el.addEventListener('input', syncOutputs);
+// Every conversion control: a change updates its label and re-converts the preview.
+const CONTROLS = [ui.width, ui.threshold, ui.keepBg, ui.scale, ui.transparent, ui.bgColor];
+for (const el of CONTROLS) {
+  el.addEventListener('input', () => {
+    syncOutputs();
+    scheduleConvert();
+  });
 }
 syncOutputs();
 
@@ -326,10 +331,6 @@ function scheduleConvert() {
       showMessage(`Could not convert with these settings: ${err.message}. The previous result is still shown.`, 'error');
     }
   });
-}
-
-for (const el of [ui.width, ui.threshold, ui.keepBg, ui.scale, ui.transparent, ui.bgColor]) {
-  el.addEventListener('input', scheduleConvert);
 }
 
 function onSourceLoaded(src) {
