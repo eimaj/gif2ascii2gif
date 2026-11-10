@@ -51,8 +51,8 @@ async function resolveFile(urlPath) {
   const s = await stat(file).catch((err) => { if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return null; throw err; });
   if (!s) return null;
   if (s.isDirectory()) return resolveFile(join(rel, 'index.html'));
-  // Pages consumes this instead of serving it.
-  if (rel === '_headers') return null;
+  // Pages consumes this instead of serving it. Case-insensitive, as macOS and Windows file systems are.
+  if (rel.toLowerCase() === '_headers') return null;
   return file;
 }
 
@@ -76,4 +76,5 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => console.log(`serving ${SITE} at http://localhost:${PORT}`));
+// Loopback only: this is a dev server, not for the local network.
+server.listen(PORT, '127.0.0.1', () => console.log(`serving ${SITE} at http://127.0.0.1:${PORT}`));

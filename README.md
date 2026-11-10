@@ -83,7 +83,7 @@ Run it locally with no build step:
 
 ```bash
 npm run serve
-# serving .../site at http://localhost:4173
+# serving .../site at http://127.0.0.1:4173
 ```
 
 The local server applies `site/_headers` (the same security headers the host serves). There is no Functions runtime locally, so `/api/event` returns 404, which the page ignores.
