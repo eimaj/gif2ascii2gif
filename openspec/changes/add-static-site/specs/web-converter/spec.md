@@ -57,6 +57,13 @@ The page SHALL refuse, without converting and with the same kind of message as t
 - **WHEN** a visitor loads a 10×2000 GIF
 - **THEN** no conversion runs and the page says the GIF is 200 times taller than it is wide, the limit is 5, and why
 
+### Requirement: Compression header check
+The page SHALL refuse, as not a readable GIF and before any frame is decompressed, a GIF any of whose frames declares an LZW minimum code size outside 2–8, the range the GIF format allows, since that one header byte sets the decompressor's work and memory per frame.
+
+#### Scenario: Tiny file declaring a huge code size
+- **WHEN** a visitor loads a GIF under 400 bytes whose frames declare LZW minimum code size 27
+- **THEN** no frame is decompressed and the page says the file is not a readable GIF and keeps the previous result
+
 ### Requirement: Controls
 The page SHALL expose width (8–160 columns, default 40), background threshold (0–179, default 40), keep background (default off), export scale (1–8, default 2), and export background (transparent by default, or a hex color). Changing any control SHALL update the preview without reloading the GIF.
 
