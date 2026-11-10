@@ -43,11 +43,15 @@ The page SHALL refuse, without converting, a GIF with more than 300 frames or a 
 - **THEN** no conversion runs and the page says the GIF has 450 frames, the limit is 300, and why
 
 ### Requirement: Pixel limits
-The page SHALL refuse, without converting and with the same kind of message as the size limits, a GIF whose declared screen or any frame rectangle is wider or taller than 4096 pixels, that has more than 50 megapixels across all frames, or whose screen is more than 5 times taller than it is wide. These limits SHALL be checked from the GIF's header before any frame is decompressed.
+The page SHALL refuse, without converting and with the same kind of message as the size limits, a GIF whose declared screen is wider or taller than 4096 pixels, any of whose frame rectangles extends past the screen, that has more than 50 megapixels across all frames (frames × screen area), or whose screen is more than 5 times taller than it is wide. These limits SHALL be checked from the GIF's header before any frame is decompressed.
 
 #### Scenario: Tiny file declaring a huge image
 - **WHEN** a visitor loads a GIF under 100 bytes whose header declares a 60000×60000 screen
 - **THEN** no frame is decompressed and the page says the GIF is 60000×60000 pixels, the limit is 4096×4096, and why
+
+#### Scenario: Frame outside the screen
+- **WHEN** a visitor loads a GIF with a 16×16 screen and an 8×8 frame at 40,40
+- **THEN** no conversion runs and the page says which frame extends past the screen, the screen size, and why
 
 #### Scenario: Very tall, narrow GIF
 - **WHEN** a visitor loads a 10×2000 GIF

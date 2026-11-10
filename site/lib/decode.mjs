@@ -1,12 +1,15 @@
 // Browser-side GIF decoding: size limits, disposal-aware compositing, area resampling, frame rate.
 // Standard JS only, so it also runs under Node for tests.
-import { parseGIF, decompressFrames } from '../vendor/gifuct-js/gifuct.bundle.mjs';
+import { parseGIF, decompressFrame } from '../vendor/gifuct-js/gifuct.bundle.mjs';
 import { frameDelay } from './core.mjs';
 
 export const MAX_FRAMES = 300;
 export const MAX_BYTES = 20 * 1024 * 1024;
-export const MAX_SIDE = 4096; // pixels per side: the GIF's screen, and each frame's own rectangle
-export const MAX_TOTAL_PIXELS = 50_000_000; // across all frames, so decoded frames fit in a tab's memory
+export const MAX_SIDE = 4096; // pixels per side of the GIF's screen; every frame must fit inside the screen
+// Frames × screen area. Decoding keeps one RGB copy of the screen per frame (3 B/px, so 150 MB at
+// this limit) and one RGBA canvas. Frames are decompressed one at a time; gifuct-js holds each
+// frame's pixels at about 12 B/px (20 B/px interlaced) until that frame is composited.
+export const MAX_TOTAL_PIXELS = 50_000_000;
 // Height ÷ width. At the widest setting (160 columns) this caps the preview at 400 rows.
 export const MAX_ASPECT = 5;
 
@@ -16,6 +19,7 @@ const LIMIT_MESSAGES = {
   bytes: (actual, limit) => `This file is ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
   download: (actual, limit) => `The download was stopped after ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
   pixels: (actual, limit) => `This GIF is ${actual.width}×${actual.height} pixels; the limit is ${limit}×${limit}.`,
+  bounds: (actual, limit) => `A ${actual.width}×${actual.height} frame of this GIF at ${actual.left},${actual.top} extends past its ${limit.width}×${limit.height} screen; every frame must fit inside the screen.`,
   total: (actual, limit) => `This GIF has ${count(actual)} pixels across all its frames (frames × width × height); the limit is ${count(limit)}.`,
   // Rounded up, so a GIF just over the limit never reads as equal to it.
   aspect: (actual, limit) => `This GIF is ${(Math.ceil(actual * 10 - 1e-9) / 10).toFixed(1)} times taller than it is wide; the limit is ${limit}.`,
@@ -27,7 +31,8 @@ export class LimitError extends Error {
     super(LIMIT_MESSAGES[kind](actual, limit));
     this.name = 'LimitError';
     // 'frames' | 'bytes' | 'download' | 'total' | 'aspect': numbers.
-    // 'pixels': limit is MAX_SIDE, actual the oversized screen or frame { width, height }.
+    // 'pixels': limit is MAX_SIDE, actual the screen { width, height }.
+    // 'bounds': limit is the screen { width, height }, actual the frame { left, top, width, height }.
     this.kind = kind;
     this.limit = limit;
     this.actual = actual;
@@ -73,20 +78,21 @@ export async function readCapped(body, limit = MAX_BYTES) {
 }
 
 // The GIF header can declare sizes far beyond its byte size; check them before any pixel buffer exists.
+// Every frame must fit inside the screen, so the screen also bounds each frame's own pixels, and the
+// CLI (whose ffmpeg drops a frame that lies wholly outside the screen) never sees a different frame count.
 export function checkPixels(gif) {
   const { width, height } = gif.lsd;
-  const tooBig = (w, h) => w > MAX_SIDE || h > MAX_SIDE;
-  if (tooBig(width, height)) throw new LimitError('pixels', MAX_SIDE, { width, height });
+  if (width > MAX_SIDE || height > MAX_SIDE) throw new LimitError('pixels', MAX_SIDE, { width, height });
   let frameCount = 0;
-  let patchTotal = 0;
   for (const f of gif.frames) {
     if (!f.image) continue;
     frameCount++;
-    const { width: fw, height: fh } = f.image.descriptor;
-    if (tooBig(fw, fh)) throw new LimitError('pixels', MAX_SIDE, { width: fw, height: fh });
-    patchTotal += fw * fh;
+    const { left, top, width: fw, height: fh } = f.image.descriptor;
+    if (left + fw > width || top + fh > height) {
+      throw new LimitError('bounds', { width, height }, { left, top, width: fw, height: fh });
+    }
   }
-  const total = Math.max(frameCount * width * height, patchTotal);
+  const total = frameCount * width * height;
   if (total > MAX_TOTAL_PIXELS) throw new LimitError('total', MAX_TOTAL_PIXELS, total);
 }
 
@@ -109,21 +115,26 @@ export function decodeGif(buffer) {
   if (!width || !height) throw new NotAGifError('zero size');
   checkPixels(gif);
   if (height / width > MAX_ASPECT) throw new LimitError('aspect', MAX_ASPECT, height / width);
-  let patches;
-  try {
-    patches = decompressFrames(gif, true);
-  } catch (err) {
-    throw new NotAGifError(err.message, { cause: err });
+  // Decompress lazily, one frame per composite step, so only one frame's pixels are alive at a time.
+  const delays = [];
+  function* patches() {
+    for (const f of gif.frames) {
+      if (!f.image) continue;
+      let patch;
+      try {
+        patch = decompressFrame(f, gif.gct, true);
+      } catch (err) {
+        throw new NotAGifError(err.message, { cause: err });
+      }
+      delays.push(patch.delay);
+      yield patch;
+    }
   }
-  return {
-    width,
-    height,
-    frames: compositeFrames(patches, width, height),
-    delayMs: frameDelay(patches.map((p) => p.delay)),
-  };
+  const frames = compositeFrames(patches(), width, height);
+  return { width, height, frames, delayMs: frameDelay(delays) };
 }
 
-// Draw each patch onto a full-size RGBA canvas, honoring disposal:
+// Draw each patch (from any iterable) onto a full-size RGBA canvas, honoring disposal:
 // 0/1 keep, 2 clear the patch area to transparent, 3 restore the canvas from before the patch.
 // Each frame is flattened to RGB on white as it is drawn, so only one RGBA canvas is ever alive.
 export function compositeFrames(patches, width, height) {

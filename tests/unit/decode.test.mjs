@@ -71,9 +71,36 @@ test('decodeGif: a screen over 4096 on one side throws pixels even when its area
   });
 });
 
-test('decodeGif: a frame rectangle larger than the limit throws before decompressing', () => {
+test('decodeGif: a frame rectangle larger than its screen throws a bounds LimitError', () => {
   const bytes = declaring({ screen: [2, 2], frame: [30000, 30000] });
-  assert.throws(() => decodeGif(bytes), (err) => err instanceof LimitError && err.kind === 'pixels' && err.actual.width === 30000);
+  assert.throws(() => decodeGif(bytes), (err) => err instanceof LimitError && err.kind === 'bounds' && err.actual.width === 30000);
+});
+
+test('decodeGif: a tiny GIF whose interlaced frames overhang the screen is refused before allocating', () => {
+  const bytes = declaring({ screen: [4082, 4082], frame: [4096, 4069], at: [0, 0], interlaced: true, count: 3 });
+  assert.ok(bytes.length < 200);
+  const before = process.memoryUsage().arrayBuffers;
+  assert.throws(() => decodeGif(bytes), (err) => {
+    assert.ok(err instanceof LimitError);
+    assert.equal(err.kind, 'bounds');
+    assert.deepEqual(err.limit, { width: 4082, height: 4082 });
+    assert.deepEqual(err.actual, { left: 0, top: 0, width: 4096, height: 4069 });
+    assert.equal(err.message, 'A 4096×4069 frame of this GIF at 0,0 extends past its 4082×4082 screen; every frame must fit inside the screen.');
+    return true;
+  });
+  // One decompressed frame would be a 66 MB RGBA patch.
+  assert.ok(process.memoryUsage().arrayBuffers - before < 1 << 20);
+});
+
+test('decodeGif: a frame wholly outside the screen is refused', () => {
+  const bytes = declaring({ screen: [16, 16], frame: [8, 8], at: [40, 40] });
+  assert.throws(() => decodeGif(bytes), (err) => err instanceof LimitError && err.kind === 'bounds' && err.actual.left === 40);
+});
+
+test('decodeGif: frame rectangles that fit the screen are counted by frames × screen size', () => {
+  // Four full-screen 4000×4000 frames: each frame's own pixels are inside the screen budget.
+  const bytes = declaring({ screen: [4000, 4000], frame: [4000, 4000], count: 4 });
+  assert.throws(() => decodeGif(bytes), (err) => err instanceof LimitError && err.kind === 'total' && err.actual === 4 * 4000 * 4000);
 });
 
 test('decodeGif: frames × screen size over the total budget throws a total LimitError', () => {

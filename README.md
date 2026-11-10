@@ -77,7 +77,7 @@ Glyphs are built in for the character ramp, so it needs no fonts or extra packag
 
 ## In the browser
 
-`site/` is a static site that does both directions client-side: load a GIF by file, drag-and-drop, URL, or the demo button, adjust every option with live controls, watch the preview, and download the transparent GIF or the standalone player. Nothing is uploaded. GIFs over 300 frames, 20 MB, 4096×4096 pixels per frame, 50 megapixels in all, or more than 5 times taller than wide are refused so the tab stays responsive.
+`site/` is a static site that does both directions client-side: load a GIF by file, drag-and-drop, URL, or the demo button, adjust every option with live controls, watch the preview, and download the transparent GIF or the standalone player. Nothing is uploaded. GIFs over 300 frames, 20 MB, 4096 pixels on a side, or 50 megapixels in all (frames × width × height), with a frame that extends past the GIF's screen, or more than 5 times taller than wide are refused so the tab stays responsive.
 
 Run it locally with no build step:
 
