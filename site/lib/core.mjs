@@ -7,6 +7,19 @@ export const CHAR_ASPECT = 0.5; // terminal cells are ~2x taller than wide
 export const MAX_BG_DISTANCE = 180; // RGB distance from the background that maps to the densest character
 export const DEFAULT_WIDTH = 40;
 export const DEFAULT_BG_THRESHOLD = 40;
+export const MIN_FPS = 1;
+export const MAX_FPS = 60;
+
+// The player's one fixed delay, from the GIF's own per-frame delays in ms: their average
+// (delays under 20 ms count as 100 ms, as browsers do), clamped to 1–60 fps.
+// The CLI (delays from ffprobe) and the site (delays from gifuct-js) both use this rule.
+export function frameDelay(delays) {
+  if (!delays.length) return 100;
+  const fixed = delays.map((d) => (d >= 20 ? d : 100)); // also catches missing (null, NaN) delays
+  const avg = fixed.reduce((a, b) => a + b, 0) / fixed.length;
+  const fps = Math.min(MAX_FPS, Math.max(MIN_FPS, 1000 / avg));
+  return Math.round(1000 / fps);
+}
 
 // Rows for a frame `width` columns wide, corrected for tall terminal cells.
 export function frameSize(srcWidth, srcHeight, width) {

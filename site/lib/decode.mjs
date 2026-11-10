@@ -1,13 +1,12 @@
 // Browser-side GIF decoding: size limits, disposal-aware compositing, area resampling, frame rate.
 // Standard JS only, so it also runs under Node for tests.
 import { parseGIF, decompressFrames } from '../vendor/gifuct-js/gifuct.bundle.mjs';
+import { frameDelay } from './core.mjs';
 
 export const MAX_FRAMES = 300;
 export const MAX_BYTES = 20 * 1024 * 1024;
 export const MAX_PIXELS = 4096 * 4096; // per frame: the GIF's screen, and each frame's own rectangle
 export const MAX_TOTAL_PIXELS = 50_000_000; // across all frames, so decoded frames fit in a tab's memory
-export const MIN_FPS = 1;
-export const MAX_FPS = 60;
 
 const LIMIT_MESSAGES = {
   frames: (actual, limit) => `This GIF has ${actual} frames; the limit is ${limit}.`,
@@ -175,14 +174,4 @@ export function resampleArea(rgb, srcW, srcH, w, h) {
     }
   }
   return out;
-}
-
-// One fixed delay for the player: the average frame delay (delays under 20 ms count as 100 ms,
-// as browsers do), clamped to 1–60 fps.
-export function frameDelay(delays) {
-  if (!delays.length) return 100;
-  const fixed = delays.map((d) => (d == null || d < 20 ? 100 : d));
-  const avg = fixed.reduce((a, b) => a + b, 0) / fixed.length;
-  const fps = Math.min(MAX_FPS, Math.max(MIN_FPS, 1000 / avg));
-  return Math.round(1000 / fps);
 }

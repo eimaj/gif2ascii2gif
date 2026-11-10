@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MAX_BG_DISTANCE, frameSize, convertFrames } from './site/lib/core.mjs';
+import { MAX_BG_DISTANCE, frameSize, frameDelay, convertFrames } from './site/lib/core.mjs';
 import { playerSource } from './site/lib/player.mjs';
 
 const PLAYERS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'players');
@@ -31,23 +31,26 @@ function parseArgs(argv) {
   return opts;
 }
 
+// Dimensions and the player delay, from the GIF's own per-frame delays (same rule as the site).
 function probe(input) {
   const json = execFileSync('ffprobe', [
     '-v', 'error', '-select_streams', 'v:0',
-    '-show_entries', 'stream=width,height,avg_frame_rate',
+    '-show_entries', 'stream=width,height,time_base:packet=duration',
     '-of', 'json', input,
-  ], { encoding: 'utf8' });
-  const s = JSON.parse(json).streams?.[0];
+  ], { encoding: 'utf8', maxBuffer: 1 << 26 });
+  const { streams, packets = [] } = JSON.parse(json);
+  const s = streams?.[0];
   if (!s) throw new Error(`no video stream found in ${input}`);
-  const [num, den] = s.avg_frame_rate.split('/').map(Number);
-  const fps = den ? num / den : 0;
-  return { width: s.width, height: s.height, fps: fps > 0 && fps <= 60 ? fps : 10 };
+  const [num, den] = s.time_base.split('/').map(Number);
+  const delays = packets.map((p) => (Number(p.duration) * num * 1000) / den);
+  return { width: s.width, height: s.height, delayMs: frameDelay(delays) };
 }
 
-function extractFrames(input, w, h, fps) {
+// One RGB frame per GIF frame (no frame-rate resampling), scaled with area averaging.
+function extractFrames(input, w, h) {
   const raw = execFileSync('ffmpeg', [
     '-v', 'error', '-i', input,
-    '-vf', `fps=${fps},scale=${w}:${h}:flags=area`,
+    '-vf', `scale=${w}:${h}:flags=area`, '-fps_mode', 'passthrough',
     '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-',
   ], { maxBuffer: 1 << 30 });
   const size = w * h * 3;
@@ -63,13 +66,13 @@ function main() {
   const opts = parseArgs(process.argv.slice(2));
   const src = probe(opts.input);
   const { w, h } = frameSize(src.width, src.height, opts.width);
-  const raw = extractFrames(opts.input, w, h, src.fps);
+  const raw = extractFrames(opts.input, w, h);
   const frames = convertFrames(raw, w, h, { keepBg: opts.keepBg, bgThreshold: opts.bgThreshold });
   const name = basename(new URL(opts.input, 'file:///').pathname).replace(/\.gif$/i, '') || 'animation';
   const out = opts.out ?? join(PLAYERS_DIR, `${name}.mjs`);
   mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, playerSource(frames, Math.round(1000 / src.fps)), { mode: 0o755 });
-  console.log(`wrote ${out}: ${frames.length} frames, ${w}x${h}, ${src.fps.toFixed(2)} fps`);
+  writeFileSync(out, playerSource(frames, src.delayMs), { mode: 0o755 });
+  console.log(`wrote ${out}: ${frames.length} frames, ${w}x${h}, ${(1000 / src.delayMs).toFixed(2)} fps`);
 }
 
 try {

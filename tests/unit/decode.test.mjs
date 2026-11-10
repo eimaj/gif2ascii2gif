@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { GIFEncoder } from '../../site/vendor/gifenc/gifenc.esm.js';
 import {
   MAX_FRAMES, MAX_BYTES, MAX_PIXELS, MAX_TOTAL_PIXELS, LimitError, NotAGifError,
-  decodeGif, resampleArea, frameDelay, flattenOnWhite, compositeFrames,
+  decodeGif, resampleArea, flattenOnWhite, compositeFrames,
 } from '../../site/lib/decode.mjs';
+import { frameDelay } from '../../site/lib/core.mjs';
 
 const RED = [255, 0, 0], BLUE = [0, 0, 255], GREEN = [0, 255, 0], WHITE = [255, 255, 255];
 

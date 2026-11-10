@@ -18,7 +18,7 @@ The repo has two Node CLI scripts: `gif2ascii.mjs` (GIF URL → ffmpeg → color
 site/                      # Pages build output directory (served as-is)
   index.html  styles.css  app.js
   lib/                     # shared core, imported by the CLI and the site
-    core.mjs               # ramp, frame sizing, detectBackground, pickChar, frameToAnsi
+    core.mjs               # ramp, frame sizing, frameDelay, detectBackground, pickChar, frameToAnsi
     glyphs.mjs             # 6×12 bitmaps, CELL_W/CELL_H
     render.mjs             # parseAnsiFrame, renderFrameRGBA (shared by canvas preview + both GIF exports)
     player.mjs             # playerSource(frames, delayMs)
@@ -42,7 +42,7 @@ package.json               # devDependencies: @playwright/test only
 4. Run the shared core (`detectBackground`, `pickChar`, `frameToAnsi`) to get ANSI frames.
 5. Preview and export both call `renderFrameRGBA` on the parsed ANSI frames.
 
-Frame rate: average of the GIF's per-frame delays (in ms, with delays under 20 ms treated as 100 ms, as browsers do), capped to the same 1–60 fps range the CLI uses. The player uses one fixed delay, matching the CLI.
+Frame rate: average of the GIF's per-frame delays (in ms, with delays under 20 ms treated as 100 ms, as browsers do), clamped to 1–60 fps, by `frameDelay` in `site/lib/core.mjs`. The CLI reads the same per-frame delays with ffprobe and calls the same function, and extracts one frame per GIF frame (no `fps=` resample), so both paths produce the same frame count and the same fixed player delay.
 
 Parity scope: the CLI decodes and resamples with ffmpeg, so CLI and site pixels can differ slightly. Parity is guaranteed from decoded-and-resampled frames onward (spec: "CLI and site parity"), which is where all the shared logic lives.
 
