@@ -92,7 +92,7 @@ The local server applies `site/_headers` (the same security headers the host ser
 
 ## Layout
 
-- `site/lib/` is the shared conversion core, imported by both CLI scripts and the site, so they cannot drift: `core.mjs` (ramp, frame sizing, background detection, character picking, ANSI frames), `glyphs.mjs` (6x12 bitmaps), `render.mjs` (ANSI frames back to RGBA), `player.mjs` (the player template), `decode.mjs` (browser GIF decoding and resampling), and `events.mjs` (the usage event schema and privacy note).
+- `site/lib/` is the shared conversion core, imported by both CLI scripts and the site, so they cannot drift: `core.mjs` (ramp, frame sizing, background detection, character picking, ANSI frames), `glyphs.mjs` (6x12 bitmaps), `render.mjs` (ANSI frames back to RGBA), `player.mjs` (the player template), `decode.mjs` (browser GIF decoding and resampling), `fetch.mjs` (fetching a GIF by URL with a time and size limit), and `events.mjs` (the usage event schema and privacy note).
 - `site/vendor/` holds the vendored, unmodified [gifenc](https://github.com/mattdesl/gifenc) 1.0.3 and [gifuct-js](https://github.com/matt-way/gifuct-js) 2.1.2 (bundled with js-binary-schema-parser 2.0.3), each with its license and a `SOURCE.md` recording the source URL and SHA-256.
 - `tests/` holds unit, integration, and browser tests, plus `serve.mjs`.
 
@@ -109,7 +109,7 @@ Then:
 
 ```bash
 npm test                  # unit + integration
-npm run test:unit         # shared core, renderer, decoder, event function, vendored file hashes
+npm run test:unit         # shared core, renderer, decoder, URL fetcher, event function, vendored file hashes
 npm run test:integration  # CLI round trip and CLI-vs-site player parity (needs ffmpeg)
 npm run test:e2e          # Playwright, Chromium only, one test at a time
 ```

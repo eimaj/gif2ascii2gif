@@ -252,7 +252,7 @@ test('dropping a GIF on the page converts it', async ({ page }) => {
   expect(await canvasWidth(page)).toBeGreaterThan(0);
 });
 
-test('the demo is fetched by URL, read through the size-capped reader, and converted', async ({ page }) => {
+test('the demo is fetched by URL and converted', async ({ page }) => {
   await page.goto('/');
   await routeDemo(page, square);
   await page.click('#demo');

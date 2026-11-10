@@ -1,5 +1,6 @@
 // gif2ascii in the browser: everything runs client-side.
-import { decodeGif, checkFileSize, readCapped, resampleArea, LimitError, NotAGifError } from './lib/decode.mjs';
+import { decodeGif, checkFileSize, resampleArea, LimitError, NotAGifError } from './lib/decode.mjs';
+import { fetchGif, FetchBlockedError, FetchTimeoutError, FETCH_TIMEOUT_MS } from './lib/fetch.mjs';
 import { frameSize, convertFrames } from './lib/core.mjs';
 import { parseAnsiFrame, gridBounds, renderFrameRGBA } from './lib/render.mjs';
 import { playerSource } from './lib/player.mjs';
@@ -57,14 +58,6 @@ syncOutputs();
 // The loaded GIF: decoded once, re-converted on every control change.
 let source = null; // { name, input, width, height, frames, delayMs }
 
-// The fetch failed before any response: the host blocks cross-origin reads, or the network failed.
-class FetchBlockedError extends Error {
-  constructor(options) {
-    super('fetch blocked', options);
-    this.name = 'FetchBlockedError';
-  }
-}
-
 function showMessage(text, kind = 'info') {
   ui.message.textContent = text;
   ui.message.classList.toggle('error', kind === 'error');
@@ -89,42 +82,6 @@ function decodePath(path) {
   } catch (err) {
     if (err instanceof URIError) return path;
     throw err;
-  }
-}
-
-// The server did not finish sending the GIF in time.
-class FetchTimeoutError extends Error {
-  constructor(options) {
-    super('fetch timed out', options);
-    this.name = 'FetchTimeoutError';
-  }
-}
-
-const FETCH_TIMEOUT_MS = 30_000;
-
-// Fetch a GIF by URL, giving up after FETCH_TIMEOUT_MS and reading at most MAX_BYTES of the body,
-// whatever Content-Length says.
-async function fetchGif(url, signal) {
-  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
-  const both = AbortSignal.any([signal, timeout]);
-  const failed = (err) => {
-    if (signal.aborted) return err;
-    if (timeout.aborted) return new FetchTimeoutError({ cause: err });
-    return null;
-  };
-  let res;
-  try {
-    res = await fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', signal: both });
-  } catch (err) {
-    throw failed(err) ?? new FetchBlockedError({ cause: err });
-  }
-  if (!res.ok) throw new Error(`The server answered ${res.status} ${res.statusText} for that URL.`);
-  const length = Number(res.headers.get('content-length'));
-  if (length) checkFileSize(length);
-  try {
-    return await readCapped(res.body);
-  } catch (err) {
-    throw failed(err) ?? err;
   }
 }
 
