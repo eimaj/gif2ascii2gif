@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GIFEncoder } from '../../site/vendor/gifenc/gifenc.esm.js';
 import {
-  MAX_FRAMES, MAX_BYTES, LimitError, NotAGifError,
+  MAX_FRAMES, MAX_BYTES, MAX_PIXELS, MAX_TOTAL_PIXELS, LimitError, NotAGifError,
   decodeGif, resampleArea, frameDelay, flattenOnWhite,
 } from '../../site/lib/decode.mjs';
 
@@ -61,6 +61,55 @@ test('decodeGif: more than 300 frames throws a frames LimitError with the actual
 test('decodeGif: oversized input throws a bytes LimitError before parsing', () => {
   const big = new Uint8Array(MAX_BYTES + 1);
   assert.throws(() => decodeGif(big), (err) => err instanceof LimitError && err.kind === 'bytes' && err.actual === MAX_BYTES + 1);
+});
+
+// A tiny 1×1 GIF whose header is rewritten to declare a bigger screen or frame rectangle.
+function declaring({ screen, frame }) {
+  const bytes = encode([{ w: 1, h: 1, palette: [RED, BLUE], index: [0] }]);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+  if (screen) { view.setUint16(6, screen[0], true); view.setUint16(8, screen[1], true); }
+  if (frame) {
+    // Image descriptor: 0x2C right after the 8-byte graphic control extension (21 F9 04 …).
+    const gce = bytes.findIndex((b, i) => b === 0x21 && bytes[i + 1] === 0xf9 && bytes[i + 2] === 0x04);
+    const desc = gce + 8;
+    assert.equal(bytes[desc], 0x2c);
+    view.setUint16(desc + 5, frame[0], true);
+    view.setUint16(desc + 7, frame[1], true);
+  }
+  return bytes;
+}
+
+test('decodeGif: a tiny GIF declaring a huge screen throws a pixels LimitError before allocating', () => {
+  const bytes = declaring({ screen: [60000, 60000] });
+  assert.ok(bytes.length < 100);
+  assert.throws(() => decodeGif(bytes), (err) => {
+    assert.ok(err instanceof LimitError);
+    assert.equal(err.kind, 'pixels');
+    assert.equal(err.limit, MAX_PIXELS);
+    assert.equal(err.actual, 60000 * 60000);
+    assert.match(err.message, /megapixels.*limit/);
+    return true;
+  });
+});
+
+test('decodeGif: a frame rectangle larger than the limit throws before decompressing', () => {
+  const bytes = declaring({ screen: [2, 2], frame: [30000, 30000] });
+  assert.throws(() => decodeGif(bytes), (err) => err instanceof LimitError && err.kind === 'pixels' && err.actual === 30000 * 30000);
+});
+
+test('decodeGif: frames × screen size over the total budget throws a total LimitError', () => {
+  const frame = { w: 1, h: 1, palette: [RED, BLUE], index: [0] };
+  const bytes = encode(Array(10).fill(frame));
+  new DataView(bytes.buffer, bytes.byteOffset).setUint16(6, 4000, true);
+  new DataView(bytes.buffer, bytes.byteOffset).setUint16(8, 4000, true);
+  assert.ok(4000 * 4000 <= MAX_PIXELS);
+  assert.throws(() => decodeGif(bytes), (err) => {
+    assert.ok(err instanceof LimitError);
+    assert.equal(err.kind, 'total');
+    assert.equal(err.limit, MAX_TOTAL_PIXELS);
+    assert.equal(err.actual, 10 * 4000 * 4000);
+    return true;
+  });
 });
 
 test('decodeGif: non-GIF input throws NotAGifError', () => {

@@ -4,17 +4,24 @@ import { parseGIF, decompressFrames } from '../vendor/gifuct-js/gifuct.bundle.mj
 
 export const MAX_FRAMES = 300;
 export const MAX_BYTES = 20 * 1024 * 1024;
+export const MAX_PIXELS = 4096 * 4096; // per frame: the GIF's screen, and each frame's own rectangle
+export const MAX_TOTAL_PIXELS = 50_000_000; // across all frames, so decoded frames fit in a tab's memory
 export const MIN_FPS = 1;
 export const MAX_FPS = 60;
+
+const LIMIT_MESSAGES = {
+  frames: (actual, limit) => `This GIF has ${actual} frames; the limit is ${limit}.`,
+  bytes: (actual, limit) => `This file is ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
+  pixels: (actual, limit) => `Each frame of this GIF is ${formatMegapixels(actual)}; the limit is ${formatMegapixels(limit)}.`,
+  total: (actual, limit) => `This GIF has ${formatMegapixels(actual)} across all its frames; the limit is ${formatMegapixels(limit)}.`,
+};
 
 // Thrown when a GIF would take too much work to convert in a browser tab.
 export class LimitError extends Error {
   constructor(kind, limit, actual) {
-    super(kind === 'frames'
-      ? `This GIF has ${actual} frames; the limit is ${limit}.`
-      : `This file is ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`);
+    super(LIMIT_MESSAGES[kind](actual, limit));
     this.name = 'LimitError';
-    this.kind = kind; // 'frames' | 'bytes'
+    this.kind = kind; // 'frames' | 'bytes' | 'pixels' | 'total'
     this.limit = limit;
     this.actual = actual;
   }
@@ -32,8 +39,26 @@ export function formatBytes(n) {
   return n >= 1024 * 1024 ? `${(n / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`;
 }
 
+export function formatMegapixels(n) {
+  return `${(n / 1_000_000).toFixed(1)} megapixels`;
+}
+
 export function checkFileSize(bytes) {
   if (bytes > MAX_BYTES) throw new LimitError('bytes', MAX_BYTES, bytes);
+}
+
+// The GIF header can declare sizes far beyond its byte size; check them before any pixel buffer exists.
+function checkPixels(gif, width, height, frameCount) {
+  if (width * height > MAX_PIXELS) throw new LimitError('pixels', MAX_PIXELS, width * height);
+  let patchTotal = 0;
+  for (const f of gif.frames) {
+    if (!f.image) continue;
+    const area = f.image.descriptor.width * f.image.descriptor.height;
+    if (area > MAX_PIXELS) throw new LimitError('pixels', MAX_PIXELS, area);
+    patchTotal += area;
+  }
+  const total = Math.max(frameCount * width * height, patchTotal);
+  if (total > MAX_TOTAL_PIXELS) throw new LimitError('total', MAX_TOTAL_PIXELS, total);
 }
 
 // Parse and check limits, then composite every frame to full size, flattened to RGB on white.
@@ -53,6 +78,7 @@ export function decodeGif(buffer) {
   if (frameCount === 0) throw new NotAGifError('no frames');
   const { width, height } = gif.lsd;
   if (!width || !height) throw new NotAGifError('zero size');
+  checkPixels(gif, width, height, frameCount);
   let patches;
   try {
     patches = decompressFrames(gif, true);

@@ -61,7 +61,7 @@ The CLI keeps ffmpeg for export; only `renderFrameRGBA` and the glyphs are share
 
 ### D5. Size limits
 
-Checked after `parseGIF`, before decompressing: frame count over 300 → block. File size over 20 MB is checked before parsing. Width is capped by the control's range (160), so no separate width block is needed. A block shows a message and records `blocked_too_large`.
+Checked after `parseGIF`, before decompressing: frame count over 300 → block; the logical screen or any frame descriptor over 4096×4096 pixels → block; frames × screen area, or the sum of frame descriptor areas, over 50 megapixels → block. The header can declare sizes far beyond the file's byte size, so the pixel checks read only the header. File size over 20 MB is checked before parsing. Width is capped by the control's range (160), so no separate width block is needed. A block shows a message and records `blocked_too_large`.
 
 ### D6. Usage events
 
