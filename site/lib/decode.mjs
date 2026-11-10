@@ -88,13 +88,14 @@ export function decodeGif(buffer) {
   return {
     width,
     height,
-    frames: compositeFrames(patches, width, height).map((rgba) => flattenOnWhite(rgba)),
+    frames: compositeFrames(patches, width, height),
     delayMs: frameDelay(patches.map((p) => p.delay)),
   };
 }
 
 // Draw each patch onto a full-size RGBA canvas, honoring disposal:
 // 0/1 keep, 2 clear the patch area to transparent, 3 restore the canvas from before the patch.
+// Each frame is flattened to RGB on white as it is drawn, so only one RGBA canvas is ever alive.
 export function compositeFrames(patches, width, height) {
   const canvas = new Uint8ClampedArray(width * height * 4);
   const out = [];
@@ -113,7 +114,7 @@ export function compositeFrames(patches, width, height) {
         canvas[d] = p.patch[s]; canvas[d + 1] = p.patch[s + 1]; canvas[d + 2] = p.patch[s + 2]; canvas[d + 3] = 255;
       }
     }
-    out.push(canvas.slice());
+    out.push(flattenOnWhite(canvas));
     if (p.disposalType === 2) {
       for (let y = Math.max(0, top); y < Math.min(height, top + ph); y++) {
         canvas.fill(0, (y * width + Math.max(0, left)) * 4, (y * width + Math.min(width, left + pw)) * 4);
