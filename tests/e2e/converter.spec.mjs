@@ -152,6 +152,22 @@ test('loading another GIF during an encode keeps that export and its event intac
   await expect.poll(() => bodies.find((b) => b.event === 'export_gif')).toEqual({ event: 'export_gif', input: 'file', width: '<=40', frames: '<=300' });
 });
 
+test('scale and background controls reach the export and the preview', async ({ page }) => {
+  await upload(page, small);
+  await page.locator('#scale').fill('4');
+  const [gif] = await Promise.all([page.waitForEvent('download'), page.click('#download-gif')]);
+  const saved = join(dir, 'scaled.gif');
+  await gif.saveAs(saved);
+  expect(probeGif(saved).width).toBe((await canvasWidth(page)) * 4);
+
+  await expect(page.locator('#stage')).toHaveClass(/checker/);
+  await page.locator('#transparent').uncheck();
+  await page.locator('#bg-color').fill('#000000');
+  const corner = () => page.locator('#preview').evaluate((c) => [...c.getContext('2d').getImageData(0, 0, 1, 1).data]);
+  await expect.poll(corner).toEqual([0, 0, 0, 255]);
+  await expect(page.locator('#stage')).not.toHaveClass(/checker/);
+});
+
 test('download names drop shell metacharacters', async ({ page }) => {
   await page.goto('/');
   await page.setInputFiles('#file', { name: '-x$(touch p).gif', mimeType: 'image/gif', buffer: readFileSync(small) });
