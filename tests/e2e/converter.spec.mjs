@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { tempDir, makeGif, probeGif } from '../helpers/fixtures.mjs';
 import { declaring } from '../helpers/gifs.mjs';
+import { parsePlayer } from '../../site/lib/player.mjs';
 
 const DEMO_URL = 'https://media.tenor.com/1iOUXZFLpBgAAAAM/dance-dancing.gif';
 
@@ -79,6 +80,22 @@ test('both downloads are named after the source and the GIF has every frame', as
   expect(info.frames).toBe(8);
   const w = await canvasWidth(page);
   expect(info.width).toBe(w * 2);
+});
+
+test('the downloaded player holds the current frames, width, and delay', async ({ page }) => {
+  await upload(page, small);
+  await page.locator('#width').fill('60');
+  await expect.poll(() => canvasWidth(page)).toBe((60 + 2) * 6);
+  const [player] = await Promise.all([page.waitForEvent('download'), page.click('#download-player')]);
+  const saved = join(dir, 'player.mjs');
+  await player.saveAs(saved);
+  const { frames, delayMs } = parsePlayer(readFileSync(saved, 'utf8'));
+  expect(frames.length).toBe(8);
+  expect(delayMs).toBe(100); // the fixture is 10 fps
+  for (const frame of frames) {
+    const widths = new Set(frame.split('\n').map((line) => line.replace(/\x1b\[[0-9;]*m/g, '').length));
+    expect([...widths]).toEqual([60]);
+  }
 });
 
 // Collect the body of every usage event the page sends.
