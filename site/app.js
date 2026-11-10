@@ -4,6 +4,7 @@ import { frameSize, convertFrames } from './lib/core.mjs';
 import { parseAnsiFrame, gridBounds, renderFrameRGBA } from './lib/render.mjs';
 import { playerSource } from './lib/player.mjs';
 import { GIFEncoder, quantize, applyPalette } from './vendor/gifenc/gifenc.esm.js';
+import { privacyNote } from './lib/events.mjs';
 
 const DEMO_URL = 'https://media.tenor.com/1iOUXZFLpBgAAAAM/dance-dancing.gif';
 
@@ -329,6 +330,22 @@ ui.downloadPlayer.addEventListener('click', () => {
 function onExport() {}
 
 // ---- Page content ------------------------------------------------------------------------
+
+// The privacy note comes from the same schema the event endpoint enforces.
+$('privacy-note').replaceChildren(...privacyNote().map((block) => {
+  if (block.p) {
+    const p = document.createElement('p');
+    p.textContent = block.p;
+    return p;
+  }
+  const ul = document.createElement('ul');
+  ul.append(...block.ul.map((line) => {
+    const li = document.createElement('li');
+    li.textContent = line;
+    return li;
+  }));
+  return ul;
+}));
 
 for (const button of document.querySelectorAll('button[data-copy]')) {
   button.addEventListener('click', async () => {

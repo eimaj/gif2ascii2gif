@@ -27,7 +27,7 @@
 
 - [x] 4.1 Add "How it works" (three steps), CLI usage with copy buttons, and the footer repo link. Verify: copy button puts the exact command on the clipboard.
 - [x] 4.2 Add "Credits and licenses" listing gifenc, gifuct-js, and js-binary-schema-parser (name, pinned version, project link, license name, link to the served license file, what it is used for) and ffmpeg for the CLI. Verify: every license link returns the license text from the local server.
-- [ ] 4.3 Add the privacy note generated from `site/lib/events.mjs` so it always lists the real events and fields. Verify: unit test asserts every allowlisted event and field appears in the rendered note text.
+- [x] 4.3 Add the privacy note generated from `site/lib/events.mjs` so it always lists the real events and fields. Verify: unit test asserts every allowlisted event and field appears in the rendered note text.
 
 ## 5. Usage events and hardening
 
