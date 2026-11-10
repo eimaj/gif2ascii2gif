@@ -33,7 +33,7 @@
 
 - [x] 5.1 Create `site/lib/events.mjs` (allowlist, enums, bucketing helpers) and `functions/api/event.js` per design D6. Verify: `tests/unit/event.test.mjs` covers 405, 403 (wrong and missing origin), 413, 400 (bad JSON, unknown event, bad enum, extra field), 503 (no binding), and 204 with a data point containing only the allowed fields.
 - [x] 5.2 Send events from the page (`convert`, `export_gif`, `export_player`, `blocked_too_large`) with `sendBeacon` and a `keepalive` fetch fallback, never awaiting the result. Verify: with `/api/event` returning 404 locally the converter still works and shows no error.
-- [ ] 5.3 Add `site/robots.txt` (allow all, disallow `/api/`) and `site/_headers` (CSP per design D7, `nosniff`, `no-referrer`, `Permissions-Policy`). Verify: the page works under the CSP in Chromium (no CSP violations in the console with the policy applied by the local server).
+- [x] 5.3 Add `site/robots.txt` (allow all, disallow `/api/`) and `site/_headers` (CSP per design D7, `nosniff`, `no-referrer`, `Permissions-Policy`). Verify: the page works under the CSP in Chromium (no CSP violations in the console with the policy applied by the local server).
 - [ ] 5.4 Confirm no deploy configuration is committed: grep the repo for account IDs, the custom domain, `wrangler`, and dataset names. Verify: grep finds only the `.gitignore` guards and the `EVENTS` binding name.
 
 ## 6. Browser tests and docs
