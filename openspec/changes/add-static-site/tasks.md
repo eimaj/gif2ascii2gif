@@ -11,7 +11,7 @@
 ## 2. Vendored libraries
 
 - [x] 2.1 Vendor gifenc 1.0.3 `dist/gifenc.esm.js` with `LICENSE` and `SOURCE.md` (URL, date, SHA-256) under `site/vendor/gifenc/`. Verify: the file imports in Node and exposes `GIFEncoder`, `quantize`, `applyPalette`.
-- [ ] 2.2 Vendor the esm.sh bundle of gifuct-js 2.1.2 as `site/vendor/gifuct-js/gifuct.bundle.mjs` with both license files (gifuct-js, js-binary-schema-parser 2.0.3) and `SOURCE.md`. Verify: the file imports in Node and exposes `parseGIF`, `decompressFrames`.
+- [x] 2.2 Vendor the esm.sh bundle of gifuct-js 2.1.2 as `site/vendor/gifuct-js/gifuct.bundle.mjs` with both license files (gifuct-js, js-binary-schema-parser 2.0.3) and `SOURCE.md`. Verify: the file imports in Node and exposes `parseGIF`, `decompressFrames`.
 - [ ] 2.3 Add `tests/unit/vendor.test.mjs` checking each vendored file against its recorded SHA-256. Verify: test passes, and fails after a one-byte edit (revert after checking).
 
 ## 3. Browser converter
