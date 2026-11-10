@@ -328,4 +328,20 @@ ui.downloadPlayer.addEventListener('click', () => {
 
 function onExport() {}
 
+// ---- Page content ------------------------------------------------------------------------
+
+for (const button of document.querySelectorAll('button[data-copy]')) {
+  button.addEventListener('click', async () => {
+    const text = $(button.dataset.copy).textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = 'Copied';
+    } catch (err) {
+      console.error(err);
+      button.textContent = 'Copy failed';
+    }
+    setTimeout(() => { button.textContent = 'Copy'; }, 1500);
+  });
+}
+
 function onBlocked() {}
