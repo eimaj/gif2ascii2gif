@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MAX_FRAMES, MAX_BYTES, MAX_SIDE, MAX_TOTAL_PIXELS, MAX_ASPECT, LimitError, NotAGifError,
-  decodeGif, readCapped, resampleArea, flattenOnWhite, compositeFrames,
+  decodeGif, checkPixels, readCapped, resampleArea, flattenOnWhite, compositeFrames,
 } from '../../site/lib/decode.mjs';
 import { frameDelay, frameSize } from '../../site/lib/core.mjs';
 import { RED, BLUE, GREEN, WHITE, encode, declaring } from '../helpers/gifs.mjs';
@@ -113,6 +113,32 @@ test('decodeGif: frames × screen size over the total budget throws a total Limi
     assert.equal(err.message, 'This GIF has 160,000,000 pixels across all its frames (frames × width × height); the limit is 50,000,000.');
     return true;
   });
+});
+
+// A parsed-GIF stand-in for checkPixels: a screen and `count` frames covering it.
+const header = (width, height, count = 1) => ({
+  lsd: { width, height },
+  frames: Array(count).fill({ image: { descriptor: { left: 0, top: 0, width, height } } }),
+});
+const kindOf = (gif) => {
+  try { checkPixels(gif); return null; } catch (err) { if (err instanceof LimitError) return err.kind; throw err; }
+};
+
+test('limits are the documented numbers', () => {
+  assert.equal(MAX_SIDE, 4096);
+  assert.equal(MAX_TOTAL_PIXELS, 50_000_000);
+  assert.equal(MAX_ASPECT, 5);
+});
+
+test('checkPixels: exact boundaries', () => {
+  assert.equal(kindOf(header(4096, 4096)), null);
+  assert.equal(kindOf(header(4097, 4096)), 'pixels');
+  assert.equal(kindOf(header(4096, 4097)), 'pixels');
+  assert.equal(kindOf(header(2500, 2000, 10)), null); // exactly 50,000,000
+  assert.equal(kindOf(header(2500, 2000, 11)), 'total');
+  const overhang = header(100, 100);
+  overhang.frames = [{ image: { descriptor: { left: 1, top: 0, width: 100, height: 100 } } }];
+  assert.equal(kindOf(overhang), 'bounds');
 });
 
 test('LimitError: a value just over a limit never reads as equal to it', () => {
