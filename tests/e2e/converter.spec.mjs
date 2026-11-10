@@ -168,6 +168,17 @@ test('scale and background controls reach the export and the preview', async ({ 
   await expect(page.locator('#stage')).not.toHaveClass(/checker/);
 });
 
+test('every credited license link serves the license text', async ({ page, request }) => {
+  await page.goto('/');
+  const hrefs = await page.locator('#credits a[href^="vendor/"]').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+  expect(hrefs.length).toBe(3);
+  for (const href of hrefs) {
+    const res = await request.get(`/${href}`);
+    expect(res.status(), href).toBe(200);
+    expect(await res.text(), href).toContain('Permission is hereby granted');
+  }
+});
+
 test('download names drop shell metacharacters', async ({ page }) => {
   await page.goto('/');
   await page.setInputFiles('#file', { name: '-x$(touch p).gif', mimeType: 'image/gif', buffer: readFileSync(small) });
