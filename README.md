@@ -4,7 +4,9 @@ Turn any GIF into a colored-ASCII animation that plays in your terminal. Then ch
 
 `gif2ascii.mjs` downloads a GIF, converts every frame to 24-bit-color ASCII, and writes a standalone player script. The player needs nothing but Node to run.
 
-![Celery Man rendered as colored ASCII](images/celery-man.gif)
+<p align="center">
+  <img src="images/celery-man.gif" alt="Celery Man rendered as colored ASCII">
+</p>
 
 ## Requirements
 
