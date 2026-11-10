@@ -6,7 +6,7 @@ import {
 } from '../../site/lib/decode.mjs';
 import { readFileSync } from 'node:fs';
 import { frameDelay, frameSize, MAX_WIDTH, CHAR_ASPECT } from '../../site/lib/core.mjs';
-import { RED, BLUE, GREEN, WHITE, encode, declaring } from '../helpers/gifs.mjs';
+import { RED, BLUE, GREEN, WHITE, encode, declaring, codeSizeOffset } from '../helpers/gifs.mjs';
 
 const pixel = (rgb, w, x, y) => [...rgb.subarray((y * w + x) * 3, (y * w + x) * 3 + 3)];
 
@@ -96,6 +96,34 @@ test('decodeGif: a tiny GIF whose interlaced frames overhang the screen is refus
 test('decodeGif: a frame wholly outside the screen is refused', () => {
   const bytes = declaring({ screen: [16, 16], frame: [8, 8], at: [40, 40] });
   assert.throws(() => decodeGif(bytes), (err) => err instanceof LimitError && err.kind === 'bounds' && err.actual.left === 40);
+});
+
+test('decodeGif: a tiny GIF declaring LZW code size 27 is refused before decompressing', () => {
+  const bytes = declaring({ codeSize: 27, count: 10 });
+  assert.ok(bytes.length < 400);
+  const before = process.memoryUsage().arrayBuffers;
+  const started = performance.now();
+  assert.throws(() => decodeGif(bytes), (err) => {
+    assert.ok(err instanceof NotAGifError);
+    assert.equal(err.message, 'Not a readable GIF (LZW minimum code size 27 is outside 2–8).');
+    return true;
+  });
+  // Decompressing one such frame takes about 1.6 s and 3 GB.
+  assert.ok(performance.now() - started < 200);
+  assert.ok(process.memoryUsage().arrayBuffers - before < 1 << 20);
+});
+
+test('decodeGif: LZW code sizes 2 and 8 decode, 1 and 9 are refused', () => {
+  for (const codeSize of [1, 9]) {
+    assert.throws(() => decodeGif(declaring({ codeSize })), (err) => err instanceof NotAGifError && err.message.includes(`size ${codeSize} is`));
+  }
+  assert.equal(decodeGif(declaring({ codeSize: 2 })).frames.length, 1);
+  // A 256-color palette makes gifenc write code size 8.
+  const palette = Array.from({ length: 256 }, (_, i) => [i, i, i]);
+  const bytes = encode([{ w: 2, h: 1, palette, index: [0, 255] }]);
+  assert.equal(bytes[codeSizeOffset(bytes)], 8);
+  const { frames } = decodeGif(bytes);
+  assert.deepEqual(pixel(frames[0], 2, 1, 0), [255, 255, 255]);
 });
 
 test('decodeGif: frame rectangles that fit the screen are counted by frames × screen size', () => {

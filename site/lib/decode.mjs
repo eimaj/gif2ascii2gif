@@ -78,6 +78,21 @@ export async function readCapped(body, limit = MAX_BYTES) {
   return out.buffer;
 }
 
+// The GIF format allows LZW minimum code sizes 2–8. The decompressor builds a 2^size-entry code
+// table before reading any data, so one header byte would otherwise set each frame's work and memory.
+export const MIN_CODE_SIZE = 2;
+export const MAX_CODE_SIZE = 8;
+
+export function checkCodeSizes(gif) {
+  for (const f of gif.frames) {
+    if (!f.image) continue;
+    const size = f.image.data.minCodeSize;
+    if (!(size >= MIN_CODE_SIZE && size <= MAX_CODE_SIZE)) {
+      throw new NotAGifError(`LZW minimum code size ${size} is outside ${MIN_CODE_SIZE}–${MAX_CODE_SIZE}`);
+    }
+  }
+}
+
 // The GIF header can declare sizes far beyond its byte size; check them before any pixel buffer exists.
 // Every frame must fit inside the screen, so the screen also bounds each frame's own pixels, and the
 // CLI (whose ffmpeg drops a frame that lies wholly outside the screen) never sees a different frame count.
@@ -114,6 +129,7 @@ export function decodeGif(buffer) {
   if (frameCount === 0) throw new NotAGifError('no frames');
   const { width, height } = gif.lsd;
   if (!width || !height) throw new NotAGifError('zero size');
+  checkCodeSizes(gif);
   checkPixels(gif);
   if (height / width > MAX_ASPECT) throw new LimitError('aspect', MAX_ASPECT, height / width);
   // Decompress lazily, one frame per composite step, so only one frame's pixels are alive at a time.
