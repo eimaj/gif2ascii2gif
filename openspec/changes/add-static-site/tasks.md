@@ -45,4 +45,4 @@
 
 ## Deployment note
 
-- Deployment is configured outside this repo (Cloudflare Pages: output directory `site`, no build command, Analytics Engine binding `EVENTS`).
+- Deployment settings live outside this repo; the only in-repo coupling is the `EVENTS` binding name.
