@@ -203,6 +203,13 @@ test('scale and background controls reach the export and the preview', async ({ 
   await expect(page.locator('#stage')).not.toHaveClass(/checker/);
 });
 
+test('the rendered privacy note discloses Web Analytics and links its policy', async ({ page }) => {
+  await page.goto('/');
+  const note = page.locator('#privacy-note');
+  await expect(note).toContainText('Cloudflare Web Analytics');
+  await expect(note.locator('a[href="https://www.cloudflare.com/privacypolicy/"]')).toHaveText('Cloudflare privacy policy');
+});
+
 test('every credited license link serves the license text', async ({ page, request }) => {
   await page.goto('/');
   const hrefs = await page.locator('#credits a[href^="vendor/"]').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
