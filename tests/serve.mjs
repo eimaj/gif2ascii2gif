@@ -4,7 +4,7 @@
 // Usage: node tests/serve.mjs [--port 4173]   (or PORT=4173)
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,14 +21,11 @@ const TYPES = {
   '.txt': 'text/plain; charset=utf-8',
   '.md': 'text/markdown; charset=utf-8',
   '.gif': 'image/gif',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
   '': 'text/plain; charset=utf-8', // LICENSE files
 };
 
 // Parse Cloudflare Pages `_headers`: an unindented URL pattern, then indented `Name: value` lines.
-export function parseHeaders(text) {
+function parseHeaders(text) {
   const rules = [];
   for (const raw of text.split('\n')) {
     if (!raw.trim() || raw.trim().startsWith('#')) continue;
@@ -44,8 +41,8 @@ export function parseHeaders(text) {
   return rules;
 }
 
-const headersFile = join(SITE, '_headers');
-const RULES = existsSync(headersFile) ? parseHeaders(readFileSync(headersFile, 'utf8')) : [];
+// Required: without it the e2e suite would silently stop exercising the site's security headers.
+const RULES = parseHeaders(readFileSync(join(SITE, '_headers'), 'utf8'));
 
 async function resolveFile(urlPath) {
   const rel = normalize(decodeURIComponent(urlPath)).replace(/^([/\\])+/, '');
@@ -54,8 +51,8 @@ async function resolveFile(urlPath) {
   const s = await stat(file).catch((err) => { if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return null; throw err; });
   if (!s) return null;
   if (s.isDirectory()) return resolveFile(join(rel, 'index.html'));
-  // Pages consumes these instead of serving them.
-  if (['_headers', '_redirects'].includes(rel)) return null;
+  // Pages consumes this instead of serving it.
+  if (rel === '_headers') return null;
   return file;
 }
 
