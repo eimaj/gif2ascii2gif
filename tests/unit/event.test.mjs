@@ -88,7 +88,7 @@ test('400 for a non-string event name, with nothing recorded', async () => {
   }
 });
 
-test('400 for a non-string field value', async () => {
+test('400 for a non-string field value (a guard; the enum check already rejected these)', async () => {
   for (const input of [['file'], { file: 1 }, 1, null]) {
     assert.equal(await call(post({ event: 'convert', input })), 400, JSON.stringify(input));
   }
