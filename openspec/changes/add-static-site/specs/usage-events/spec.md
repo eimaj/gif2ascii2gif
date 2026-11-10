@@ -58,3 +58,7 @@ When the analytics storage binding is not configured, the endpoint SHALL respond
 #### Scenario: Local development
 - **WHEN** the site runs without the storage binding and a valid event is posted
 - **THEN** the response is 503
+
+#### Scenario: Storage write fails
+- **WHEN** the storage binding is configured but writing a valid event to it throws
+- **THEN** the error is logged and the response is 503

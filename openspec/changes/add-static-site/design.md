@@ -73,7 +73,7 @@ Function `onRequest`:
 3. Read at most 512 bytes (check `Content-Length`, then the actual length), else 413.
 4. Parse JSON, validate against the allowlist and enums in one schema object shared with the privacy note text (the page imports the same lists from `site/lib/events.mjs`), else 400.
 5. If `env.EVENTS` is missing → 503.
-6. `env.EVENTS.writeDataPoint({ blobs: [event, input, width, frames], indexes: [event] })` → 204.
+6. `env.EVENTS.writeDataPoint({ blobs: [event, input, width, frames], indexes: [event] })` → 204. If `writeDataPoint` throws, log the error and return 503.
 
 The binding name `EVENTS` is the only coupling to Cloudflare and is a name, not a credential. The dataset name and binding are set in the dashboard.
 
