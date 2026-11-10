@@ -59,7 +59,3 @@ export function privacyNote() {
     },
   ];
 }
-
-export function privacyNoteText() {
-  return privacyNote().map((b) => (b.p ? [b.p, b.link?.text].filter(Boolean).join(' ') : b.ul.join('\n'))).join('\n');
-}

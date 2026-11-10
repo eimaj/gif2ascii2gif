@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EVENTS, FIELDS, privacyNoteText } from '../../site/lib/events.mjs';
+import { EVENTS, FIELDS, privacyNote } from '../../site/lib/events.mjs';
+
+// The note's text as the page renders it.
+const privacyNoteText = () => privacyNote()
+  .map((b) => (b.p ? [b.p, b.link?.text].filter(Boolean).join(' ') : b.ul.join('\n')))
+  .join('\n');
 
 test('privacy note lists every allowlisted event', () => {
   const text = privacyNoteText();
