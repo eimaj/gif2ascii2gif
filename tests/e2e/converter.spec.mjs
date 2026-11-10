@@ -109,6 +109,21 @@ test('a Copy button puts the exact CLI command on the clipboard', async ({ page,
   expect(copied).toBe('git clone https://github.com/eimaj/gif2ascii2gif.git && cd gif2ascii2gif');
 });
 
+test('the page is dark by default, light when the system prefers light', async ({ page }) => {
+  const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  await page.emulateMedia({ colorScheme: 'dark' }); // Chromium reports 'no-preference' as light
+  await page.goto('/');
+  expect(await background()).toBe('rgb(13, 17, 16)'); // --bg #0d1110
+  await page.emulateMedia({ colorScheme: 'light' });
+  expect(await background()).toBe('rgb(246, 247, 244)'); // --bg #f6f7f4
+});
+
+test('at phone width the page does not scroll sideways', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await upload(page, small);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
+
 // Collect the body of every usage event the page sends.
 async function captureEvents(page) {
   const bodies = [];
