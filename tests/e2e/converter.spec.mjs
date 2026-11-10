@@ -132,6 +132,35 @@ test('events fall back to fetch, and a failed event never reaches the visitor', 
   await expect(page.locator('#message')).toContainText('Saved small.gif');
 });
 
+test('a file that is not a GIF keeps the previous result', async ({ page }) => {
+  await upload(page, small);
+  const width = await canvasWidth(page);
+  await page.setInputFiles('#file', { name: 'bad.gif', mimeType: 'image/gif', buffer: Buffer.from('<html>') });
+  const message = page.locator('#message');
+  await expect(message).toHaveClass(/error/);
+  await expect(message).toContainText('not a readable GIF');
+  await expect(message).toContainText('previous result');
+  expect(await canvasWidth(page)).toBe(width);
+  await expect(page.locator('#download-gif')).toBeEnabled();
+});
+
+test('a URL whose host blocks cross-origin reads explains the block', async ({ page }) => {
+  await page.goto('/');
+  await page.route(DEMO_URL, (route) => route.abort());
+  await page.click('#demo');
+  const message = page.locator('#message');
+  await expect(message).toHaveClass(/error/);
+  await expect(message).toContainText('blocks downloads');
+  await expect(message).toContainText('upload it instead');
+});
+
+test('dropping a GIF on the page converts it', async ({ page }) => {
+  await page.goto('/');
+  await drop(page, small);
+  await expect(page.locator('#message')).toContainText('Converted small.gif');
+  expect(await canvasWidth(page)).toBeGreaterThan(0);
+});
+
 test('the demo is fetched by URL, read through the size-capped reader, and converted', async ({ page }) => {
   await page.goto('/');
   await routeDemo(page, square);
