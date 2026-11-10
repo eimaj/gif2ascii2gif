@@ -2,6 +2,8 @@
 import { decodeGif, checkFileSize, resampleArea, LimitError, NotAGifError } from './lib/decode.mjs';
 import { frameSize, convertFrames } from './lib/core.mjs';
 import { parseAnsiFrame, gridBounds, renderFrameRGBA } from './lib/render.mjs';
+import { playerSource } from './lib/player.mjs';
+import { GIFEncoder, quantize, applyPalette } from './vendor/gifenc/gifenc.esm.js';
 
 const DEMO_URL = 'https://media.tenor.com/1iOUXZFLpBgAAAAM/dance-dancing.gif';
 
@@ -258,6 +260,72 @@ function onSourceLoaded() {
   resampled = new Map();
   frameIndex = 0;
   convert();
+  ui.downloadGif.disabled = false;
+  ui.downloadPlayer.disabled = false;
 }
+
+// ---- Exports -----------------------------------------------------------------------------
+
+function download(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+// Encode the current frames with gifenc: one palette per frame, transparent index, dispose 2, looping.
+async function encodeGif({ grids, cols, rows, delayMs }, { background, scale }, onProgress) {
+  const enc = GIFEncoder();
+  for (let i = 0; i < grids.length; i++) {
+    const { data, width, height } = renderFrameRGBA(grids[i], cols, rows, { background, scale });
+    const palette = quantize(data, 255, { format: 'rgba4444', oneBitAlpha: true });
+    const index = applyPalette(data, palette, 'rgba4444');
+    const transparentIndex = palette.findIndex((c) => c[3] === 0);
+    enc.writeFrame(index, width, height, {
+      palette,
+      delay: delayMs,
+      repeat: 0,
+      dispose: 2,
+      ...(transparentIndex >= 0 ? { transparent: true, transparentIndex } : {}),
+    });
+    onProgress(i + 1, grids.length);
+    await nextTask();
+  }
+  enc.finish();
+  return enc.bytes();
+}
+
+ui.downloadGif.addEventListener('click', async () => {
+  if (!result) return;
+  const snapshot = result;
+  const name = source.name;
+  ui.downloadGif.disabled = true;
+  try {
+    const bytes = await encodeGif(snapshot, settings(), (i, n) => showMessage(`Encoding GIF… frame ${i} of ${n}`));
+    download(new Blob([bytes], { type: 'image/gif' }), `${name}.gif`);
+    showMessage(`Saved ${name}.gif (${snapshot.grids.length} frames).`);
+    onExport('export_gif');
+  } catch (err) {
+    console.error(err);
+    showMessage(`Could not encode the GIF: ${err.message}`, 'error');
+  } finally {
+    ui.downloadGif.disabled = false;
+  }
+});
+
+ui.downloadPlayer.addEventListener('click', () => {
+  if (!result) return;
+  download(new Blob([playerSource(result.ansi, result.delayMs)], { type: 'text/javascript' }), `${source.name}.mjs`);
+  showMessage(`Saved ${source.name}.mjs. Run it with: node ${source.name}.mjs`);
+  onExport('export_player');
+});
+
+function onExport() {}
 
 function onBlocked() {}

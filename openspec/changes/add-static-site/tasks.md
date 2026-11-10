@@ -20,7 +20,7 @@
 - [x] 3.2 Implement decoding in `site/lib/decode.mjs`: gifuct-js parse, size-limit checks (20 MB, 300 frames) before decompressing, disposal-aware compositing, area resampling, frame-rate calculation. Verify: unit test with a generated GIF using disposal 2 and 3 matches expected composited pixels; over-limit inputs throw a typed limit error with the actual value.
 - [x] 3.3 Wire inputs, errors, and blocking: CORS failure message, not-a-GIF message that keeps the previous result, limit-block message stating limit, actual value, and why. Verify: manual check of each message; covered again in E2E.
 - [x] 3.4 Wire controls and the canvas preview (decode once, re-convert on control change, loop at source fps, checkerboard when transparent). Verify: changing width updates the canvas size live.
-- [ ] 3.5 Implement exports: GIF via gifenc (transparent index, `dispose: 2`, loop) and player via `playerSource`, both named after the source. Verify: the exported GIF's frame count and size match the preview; the downloaded `.mjs` plays with `node`.
+- [x] 3.5 Implement exports: GIF via gifenc (transparent index, `dispose: 2`, loop) and player via `playerSource`, both named after the source. Verify: the exported GIF's frame count and size match the preview; the downloaded `.mjs` plays with `node`.
 - [ ] 3.6 Add the CLI-vs-site parity test to `tests/integration/`: identical decoded frames through both code paths produce byte-identical player text. Verify: `node --test tests/integration` passes.
 
 ## 4. Page content
