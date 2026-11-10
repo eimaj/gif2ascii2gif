@@ -38,7 +38,7 @@
 
 ## 6. Browser tests and docs
 
-- [ ] 6.1 Add `tests/serve.mjs` (zero-dependency static server for `site/` that applies `_headers`) and `playwright.config.mjs` (Chromium only, `webServer` runs `serve.mjs`). Add `@playwright/test` as the only dev dependency. Verify: `npx playwright test --list` shows the suite.
+- [x] 6.1 Add `tests/serve.mjs` (zero-dependency static server for `site/` that applies `_headers`) and `playwright.config.mjs` (Chromium only, `webServer` runs `serve.mjs`). Add `@playwright/test` as the only dev dependency. Verify: `npx playwright test --list` shows the suite.
 - [ ] 6.2 Write E2E tests: upload a generated fixture and see the preview play, change width and see the canvas resize, download both exports and check names and GIF frame count, upload a 301-frame fixture and see the block message. Verify: `npm run test:e2e` passes, one test at a time, Chromium only.
 - [ ] 6.3 Update `README.md` with the site, the shared-core layout, and how to run each test suite. Verify: every command in the README runs as written.
 
