@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULT_WIDTH, DEFAULT_BG_THRESHOLD } from '../../site/lib/core.mjs';
 import { parsePlayer, playerSource } from '../../site/lib/player.mjs';
 import { MAX_SCALE, parseAnsiFrame, renderFrameRGBA } from '../../site/lib/render.mjs';
@@ -104,6 +104,15 @@ test('CLI: bytes after the trailer, such as a second GIF appended to the file, a
   const r = gif2ascii(gif);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(parsePlayer(readFileSync(join(dir, 'out.mjs'), 'utf8')).frames.length, 2);
+});
+
+test('CLI: a file: URL is read as the file it names', () => {
+  const dir = tempDir();
+  const gif = join(dir, 'url.gif');
+  writeFileSync(gif, encode([{ w: 2, h: 2, palette: [RED, BLUE], index: [0, 0, 0, 0] }]));
+  const r = spawnSync('node', [join(ROOT, 'gif2ascii.mjs'), pathToFileURL(gif).href, '-o', join(dir, 'out.mjs')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(parsePlayer(readFileSync(join(dir, 'out.mjs'), 'utf8')).frames.length, 1);
 });
 
 test('CLI: a plain-text extension is accepted, as on the site', () => {

@@ -36,14 +36,14 @@ function parseArgs(argv) {
   return opts;
 }
 
-// The GIF's bytes, downloaded for an http(s) URL and read from disk otherwise.
+// The GIF's bytes, downloaded for an http(s) URL and read from disk for a file: URL or a path.
 async function readInput(input) {
   if (/^https?:\/\//i.test(input)) {
     const res = await fetch(input);
     if (!res.ok) throw new Error(`download failed: HTTP ${res.status} for ${input}`);
     return new Uint8Array(await res.arrayBuffer());
   }
-  return new Uint8Array(readFileSync(input));
+  return new Uint8Array(readFileSync(/^file:/i.test(input) ? fileURLToPath(input) : input));
 }
 
 // Dimensions, frame count, the player delay, and where the GIF ends, from the shared block scan the
