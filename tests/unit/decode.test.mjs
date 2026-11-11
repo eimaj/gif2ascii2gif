@@ -6,7 +6,7 @@ import {
 } from '../../site/lib/decode.mjs';
 import { readFileSync } from 'node:fs';
 import { frameDelay, frameSize, MAX_WIDTH, CHAR_ASPECT } from '../../site/lib/core.mjs';
-import { RED, BLUE, GREEN, WHITE, encode, declaring, codeSizeOffset, withExtensions } from '../helpers/gifs.mjs';
+import { RED, BLUE, GREEN, WHITE, encode, declaring, codeSizeOffset, withExtensions, withSubBlockFlood } from '../helpers/gifs.mjs';
 
 const pixel = (rgb, w, x, y) => [...rgb.subarray((y * w + x) * 3, (y * w + x) * 3 + 3)];
 
@@ -63,6 +63,23 @@ test('decodeGif: a comment flood is refused by the block scan before the decoder
   assert.ok(performance.now() - started < 1000);
   assert.ok(process.memoryUsage().heapUsed - heapBefore < 32 << 20);
 });
+
+for (const kind of ['comment', 'image', 'application']) {
+  test(`decodeGif: a ${kind} sub-block flood is refused by the scan before the decoder builds any object`, () => {
+    // 9 million one-byte sub-blocks in 18 MB, in one block. Parsing one took about 0.8 s and 1.37 GB peak RSS.
+    const bytes = withSubBlockFlood(kind, 9_000_000);
+    assert.ok(bytes.length <= MAX_BYTES);
+    const heapBefore = process.memoryUsage().heapUsed;
+    const started = performance.now();
+    assert.throws(() => decodeGif(bytes), (err) => {
+      assert.ok(err instanceof NotAGifError);
+      assert.match(err.message, /^Not a readable GIF \(9,000,00\d data sub-blocks in 18,000,\d{3} bytes; the limit is 285,35\d\)\.$/);
+      return true;
+    });
+    assert.ok(performance.now() - started < 1000);
+    assert.ok(process.memoryUsage().heapUsed - heapBefore < 32 << 20);
+  });
+}
 
 test('decodeGif: exactly MAX_BLOCKS blocks decode, one more is refused', () => {
   const frame = { w: 1, h: 1, palette: [RED, BLUE], index: [0] };

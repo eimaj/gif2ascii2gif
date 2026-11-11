@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scanGif, MalformedGifError } from '../../site/lib/scan.mjs';
-import { RED, BLUE, encode, declaring, withExtensions, withoutGce } from '../helpers/gifs.mjs';
+import { scanGif, maxSubBlocks, MalformedGifError } from '../../site/lib/scan.mjs';
+import { RED, BLUE, encode, declaring, withExtensions, withoutGce, withSubBlockFlood } from '../helpers/gifs.mjs';
 
 const frame = { w: 1, h: 1, palette: [RED, BLUE], index: [0] };
 
@@ -58,4 +58,21 @@ test('scanGif: refuses a missing header, a truncated sub-block chain, and an unk
 
 test('scanGif: refuses a graphic control extension that is not 4 bytes', () => {
   malformed(withExtensions(encode([frame]), 1, [0x21, 0xf9, 0x03, 0, 0, 0, 0x00]), /graphic control extension of 3 bytes/);
+});
+
+test('scanGif: counts data sub-blocks, not the zero-size terminators', () => {
+  // Loop-count extension (2: id + data), graphic control (1), and the frame's LZW data (1).
+  assert.equal(scanGif(encode([frame])).subBlockCount, 4);
+  assert.equal(scanGif(withSubBlockFlood('comment', 10)).subBlockCount, 4 + 10);
+});
+
+test('scanGif: refuses a file with more data sub-blocks than maxSubBlocks, and accepts one at it', () => {
+  assert.equal(maxSubBlocks(20 * 1024 * 1024, 1264), 4096 + 2 * 1264 + 327_680);
+  // The largest one-byte comment flood within the limit: each sub-block adds 2 bytes.
+  const empty = withSubBlockFlood('comment', 0);
+  const { subBlockCount, blockCount } = scanGif(empty);
+  let n = 0;
+  while (subBlockCount + n + 1 <= maxSubBlocks(empty.length + 2 * (n + 1), blockCount)) n++;
+  assert.equal(scanGif(withSubBlockFlood('comment', n)).subBlockCount, subBlockCount + n);
+  malformed(withSubBlockFlood('comment', n + 1), /data sub-blocks in [\d,]+ bytes; the limit is [\d,]+$/);
 });

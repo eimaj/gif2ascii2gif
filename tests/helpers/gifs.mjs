@@ -82,3 +82,36 @@ export function withoutGce(bytes, frames) {
   out.set(bytes.subarray(from), to);
   return out;
 }
+
+// A one-frame 1×1 GIF with a chain of `count` one-byte sub-blocks, the shape no encoder writes:
+// 'comment' and 'application' (an XMP-style application extension) add the chain as an extension
+// before the frame; 'image' splits the frame's own LZW data into one-byte sub-blocks, padded with
+// zero bytes after the end code to `count` sub-blocks.
+export function withSubBlockFlood(kind, count) {
+  const bytes = encode([{ w: 1, h: 1, palette: [RED, BLUE], index: [0] }]);
+  const chain = (data) => {
+    const out = new Uint8Array(2 * data.length + 1);
+    data.forEach((b, i) => { out[2 * i] = 1; out[2 * i + 1] = b; });
+    return out; // the final 0 is the terminator
+  };
+  const join = (...parts) => {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) { out.set(p, at); at += p.length; }
+    return out;
+  };
+  const filler = new Uint8Array(count).fill(0x78);
+  if (kind === 'comment' || kind === 'application') {
+    const at = 13 + colorTableSize(bytes[10]);
+    const head = kind === 'comment' ? [0x21, 0xfe] : [0x21, 0xff, 0x0b, ...new TextEncoder().encode('XMP DataXMP')];
+    return join(bytes.subarray(0, at), new Uint8Array(head), chain(filler), bytes.subarray(at));
+  }
+  if (kind !== 'image') throw new Error(`unknown flood kind ${kind}`);
+  const start = codeSizeOffset(bytes) + 1;
+  const lzw = [];
+  let p = start;
+  for (; bytes[p]; p += bytes[p] + 1) lzw.push(...bytes.subarray(p + 1, p + 1 + bytes[p]));
+  const data = new Uint8Array(Math.max(count, lzw.length));
+  data.set(lzw);
+  return join(bytes.subarray(0, start), chain(data), bytes.subarray(p + 1));
+}
