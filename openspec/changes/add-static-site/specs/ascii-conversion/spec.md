@@ -77,6 +77,10 @@ The CLI and the browser converter SHALL produce byte-identical player files for 
 - **WHEN** a GIF has a frame that lies wholly outside its screen
 - **THEN** the site refuses it and the CLI exits with an error instead of writing a player
 
+#### Scenario: Bytes after the trailer
+- **WHEN** a file holds a 2-frame GIF followed by a second copy of it and is converted by the CLI and by the site
+- **THEN** both stop at the first GIF's trailer and emit 2 frames
+
 #### Scenario: Same input, same player
 - **WHEN** the same decoded frames are converted with the same width and background options by the CLI code path and the site code path
 - **THEN** the generated player text is identical

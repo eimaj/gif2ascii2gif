@@ -102,6 +102,11 @@ test('decodeGif: structurally malformed input is not a readable GIF', () => {
   assert.throws(() => decodeGif(unknown), (err) => err instanceof NotAGifError && /decoder read 0 of 1 frames/.test(err.message));
 });
 
+test('decodeGif: stops at the trailer, so a second GIF appended to the file is not decoded', () => {
+  const one = encode([{ w: 1, h: 1, palette: [RED, BLUE], index: [0] }, { w: 1, h: 1, palette: [BLUE, RED], index: [0] }]);
+  assert.equal(decodeGif(new Uint8Array([...one, ...one])).frames.length, 2);
+});
+
 test('decodeGif: oversized input throws a bytes LimitError before parsing', () => {
   const big = new Uint8Array(MAX_BYTES + 1);
   assert.throws(() => decodeGif(big), (err) => err instanceof LimitError && err.kind === 'bytes' && err.actual === MAX_BYTES + 1);

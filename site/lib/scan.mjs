@@ -39,7 +39,9 @@ function skipSubBlocks(bytes, p) {
 // image descriptors), and of data sub-blocks (refused above maxSubBlocks), and for the first `maxFrames` frames their rectangle, LZW minimum code size, and
 // delay in ms. A graphic control extension sets the delay of the next frame only; a frame with none
 // gets 0, as browsers do (ffmpeg instead carries the last one forward).
-// A file that ends cleanly between blocks without a trailer is accepted, as browsers do.
+// A file that ends cleanly between blocks without a trailer is accepted, as browsers do. `end` is the
+// offset just past the trailer (or the file's length without one): decoders stop there, so bytes after
+// it, such as a second GIF appended to the file, are not part of the GIF.
 export function scanGif(bytes, { maxFrames = Infinity } = {}) {
   const u16 = (p) => bytes[p] | (bytes[p + 1] << 8);
   const sig = String.fromCharCode(...bytes.subarray(0, 6));
@@ -87,5 +89,6 @@ export function scanGif(bytes, { maxFrames = Infinity } = {}) {
     const count = (n) => n.toLocaleString('en-US');
     throw new MalformedGifError(`${count(subBlockCount)} data sub-blocks in ${count(bytes.length)} bytes; the limit is ${count(limit)}`);
   }
-  return { width, height, frameCount, blockCount, subBlockCount, frames };
+  const end = p < bytes.length ? p + 1 : p;
+  return { width, height, frameCount, blockCount, subBlockCount, frames, end };
 }

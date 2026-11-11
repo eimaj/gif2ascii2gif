@@ -10,6 +10,7 @@ import {
 } from './site/lib/core.mjs';
 import { playerSource } from './site/lib/player.mjs';
 import { scanGif, MalformedGifError } from './site/lib/scan.mjs';
+import { checkCodeSizes, NotAGifError } from './site/lib/decode.mjs';
 
 const PLAYERS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'players');
 
@@ -44,22 +45,29 @@ async function readInput(input) {
   return new Uint8Array(readFileSync(input));
 }
 
-// Dimensions, frame count, and the player delay, from the shared block scan the site also uses, so a
-// frame without a graphic control extension counts as 0 ms in both (ffprobe would carry the last one forward).
+// Dimensions, frame count, the player delay, and where the GIF ends, from the shared block scan the
+// site also uses, so a frame without a graphic control extension counts as 0 ms in both (ffprobe would
+// carry the last one forward). The site's LZW code-size check runs too, since ffmpeg drops such frames.
 function probe(bytes) {
   let scan;
   try {
     scan = scanGif(bytes);
+    checkCodeSizes(scan);
   } catch (err) {
     if (err instanceof MalformedGifError) throw new Error(`not a readable GIF (${err.message})`, { cause: err });
+    if (err instanceof NotAGifError) throw new Error(`not a readable GIF (${err.detail})`, { cause: err });
     throw err;
   }
   if (scan.frameCount === 0) throw new Error('not a readable GIF (no frames)');
-  return { width: scan.width, height: scan.height, frameCount: scan.frameCount, delayMs: frameDelay(scan.frames.map((f) => f.delayMs)) };
+  return {
+    width: scan.width, height: scan.height, frameCount: scan.frameCount, end: scan.end,
+    delayMs: frameDelay(scan.frames.map((f) => f.delayMs)),
+  };
 }
 
-// One RGB frame per GIF frame (no frame-rate resampling), scaled with area averaging. The bytes go
-// to ffmpeg on stdin, so it decodes exactly what was scanned.
+// One RGB frame per GIF frame (no frame-rate resampling), scaled with area averaging. `bytes` are the
+// scanned GIF only (up to its trailer), so ffmpeg, which would go on to decode a second GIF appended
+// to the file, decodes exactly what was scanned.
 function extractFrames(bytes, w, h) {
   const raw = execFileSync('ffmpeg', [
     '-v', 'error', '-f', 'gif', '-i', 'pipe:0',
@@ -80,10 +88,11 @@ async function main() {
   const bytes = await readInput(opts.input);
   const src = probe(bytes);
   const { w, h } = frameSize(src.width, src.height, opts.width);
-  const raw = extractFrames(bytes, w, h);
-  // ffmpeg drops a frame that lies wholly outside the GIF's screen; the site refuses such GIFs, so do the same.
+  const raw = extractFrames(bytes.subarray(0, src.end), w, h);
+  // ffmpeg drops a frame it cannot draw, such as one wholly outside the GIF's screen or one with corrupt
+  // image data; the site refuses such GIFs, so do the same.
   if (raw.length !== src.frameCount) {
-    throw new Error(`ffmpeg decoded ${raw.length} of the GIF's ${src.frameCount} frames, most likely because a frame lies outside the GIF's screen, which is not supported`);
+    throw new Error(`ffmpeg decoded ${raw.length} of the GIF's ${src.frameCount} frames; a frame outside the GIF's screen or with corrupt image data is not supported`);
   }
   const frames = convertFrames(raw, w, h, { keepBg: opts.keepBg, bgThreshold: opts.bgThreshold });
   const name = basename(new URL(opts.input, 'file:///').pathname).replace(/\.gif$/i, '') || 'animation';

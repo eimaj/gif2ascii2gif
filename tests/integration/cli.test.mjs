@@ -8,7 +8,7 @@ import { DEFAULT_WIDTH, DEFAULT_BG_THRESHOLD } from '../../site/lib/core.mjs';
 import { parsePlayer, playerSource } from '../../site/lib/player.mjs';
 import { MAX_SCALE, parseAnsiFrame, renderFrameRGBA } from '../../site/lib/render.mjs';
 import { tempDir, makeGif, probeGif, firstFrameAlpha, firstFrameRGBA } from '../helpers/fixtures.mjs';
-import { withSubBlockFlood } from '../helpers/gifs.mjs';
+import { RED, BLUE, encode, declaring, withSubBlockFlood } from '../helpers/gifs.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const run = (script, args) => execFileSync('node', [join(ROOT, script), ...args], { encoding: 'utf8' });
@@ -92,6 +92,26 @@ test('CLI: a sub-block flood is refused by the shared scan before ffmpeg runs', 
   const r = spawnSync('node', [join(ROOT, 'gif2ascii.mjs'), gif, '-o', join(dirname(gif), 'flood.mjs')], { encoding: 'utf8' });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /^gif2ascii: not a readable GIF \(100,004 data sub-blocks in 200,\d{3} bytes; the limit is 7,\d{3}\)$/m);
+});
+
+const gif2ascii = (gif) => spawnSync('node', [join(ROOT, 'gif2ascii.mjs'), gif, '-o', join(dirname(gif), 'out.mjs')], { encoding: 'utf8' });
+
+test('CLI: bytes after the trailer, such as a second GIF appended to the file, are not converted', () => {
+  const dir = tempDir();
+  const one = encode([{ w: 2, h: 2, palette: [RED, BLUE], index: [0, 0, 0, 0] }, { w: 2, h: 2, palette: [BLUE, RED], index: [0, 0, 0, 0] }]);
+  const gif = join(dir, 'concat.gif');
+  writeFileSync(gif, new Uint8Array([...one, ...one]));
+  const r = gif2ascii(gif);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(parsePlayer(readFileSync(join(dir, 'out.mjs'), 'utf8')).frames.length, 2);
+});
+
+test('CLI: an LZW minimum code size above 8 is refused by the shared check, not blamed on the screen', () => {
+  const gif = join(tempDir(), 'codesize.gif');
+  writeFileSync(gif, declaring({ codeSize: 9 }));
+  const r = gif2ascii(gif);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^gif2ascii: not a readable GIF \(LZW minimum code size 9 is outside 2–8\)$/m);
 });
 
 test('CLI: option checks use the shared limits and background parser', () => {

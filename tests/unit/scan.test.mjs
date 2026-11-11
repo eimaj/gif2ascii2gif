@@ -36,6 +36,14 @@ test('scanGif: a file that ends between blocks without a trailer is accepted', (
   const bytes = encode([frame, frame]);
   assert.equal(bytes.at(-1), 0x3b);
   assert.equal(scanGif(bytes.subarray(0, -1)).frameCount, 2);
+  assert.equal(scanGif(bytes.subarray(0, -1)).end, bytes.length - 1);
+});
+
+test('scanGif: stops at the trailer and reports the offset just past it', () => {
+  const bytes = encode([frame, frame]);
+  const scan = scanGif(new Uint8Array([...bytes, ...bytes]));
+  assert.equal(scan.frameCount, 2);
+  assert.equal(scan.end, bytes.length);
 });
 
 const malformed = (bytes, pattern) => assert.throws(() => scanGif(bytes), (err) => {

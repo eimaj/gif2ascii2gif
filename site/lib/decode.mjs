@@ -52,6 +52,7 @@ export class NotAGifError extends Error {
   constructor(detail, options) {
     super(`Not a readable GIF${detail ? ` (${detail})` : ''}.`, options);
     this.name = 'NotAGifError';
+    this.detail = detail; // the reason alone, for callers that word the message their own way
   }
 }
 
