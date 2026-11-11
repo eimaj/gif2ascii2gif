@@ -50,7 +50,8 @@ body.dragging { outline: 3px dashed var(--accent); outline-offset: -6px; }
 .masthead { padding-top: 32px; }
 h1 { margin: 0; font-size: 1.9rem; color: var(--accent); }
 h2 { font-size: 1.15rem; margin: 2.2rem 0 0.8rem; }
-.tagline { margin: 0.3rem 0 1.5rem; color: var(--muted); }
+.tagline { margin: 0.3rem 0 0.8rem; color: var(--muted); }
+.intro { margin: 0 0 1.5rem; max-width: 68ch; line-height: 1.5; }
 
 a { color: var(--accent); }
 
