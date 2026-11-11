@@ -128,7 +128,23 @@ The page SHALL offer downloads of the animated GIF (looping, current settings) a
 - **THEN** the file is `dance-dancing.mjs` and running it with Node plays the animation
 
 ### Requirement: Page content
-Below the converter the page SHALL show, in order: a three-step "How it works", CLI usage with copyable commands, "Credits and licenses", and a footer linking the GitHub repository.
+Below the converter the page SHALL show, in order: an accessible tab set with the tabs "How it works" (three steps, selected by default), "Privacy" (the privacy note), and "Credits" ("Credits and licenses"); CLI usage with copyable commands; and a footer linking the GitHub repository. Each tab SHALL be deep-linkable by URL hash, and without JavaScript every panel SHALL stay readable.
+
+#### Scenario: Default tab
+- **WHEN** a visitor opens the page without a tab hash
+- **THEN** "How it works" is selected and only its panel is shown
+
+#### Scenario: Switch tabs
+- **WHEN** a visitor clicks a tab, or moves to it with the arrow, Home, or End keys and activates it
+- **THEN** only that tab's panel is shown and the URL hash names it without scrolling the page
+
+#### Scenario: Deep link
+- **WHEN** a visitor opens the page with `#how-it-works`, `#privacy`, or `#credits`, or the hash changes to one of them
+- **THEN** that tab is selected
+
+#### Scenario: No JavaScript
+- **WHEN** JavaScript is unavailable
+- **THEN** all three panels are shown with their headings and the tab list is hidden
 
 #### Scenario: Copy CLI command
 - **WHEN** a visitor activates the copy control on a CLI command
