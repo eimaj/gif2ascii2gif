@@ -1,14 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_WIDTH, DEFAULT_BG_THRESHOLD } from '../../site/lib/core.mjs';
-import { parsePlayer } from '../../site/lib/player.mjs';
-import { CELL_W, CELL_H } from '../../site/lib/glyphs.mjs';
-import { MARGIN, MAX_SCALE } from '../../site/lib/render.mjs';
-import { tempDir, makeGif, probeGif, firstFrameAlpha } from '../helpers/fixtures.mjs';
+import { parsePlayer, playerSource } from '../../site/lib/player.mjs';
+import { MAX_SCALE, parseAnsiFrame, renderFrameRGBA } from '../../site/lib/render.mjs';
+import { tempDir, makeGif, probeGif, firstFrameAlpha, firstFrameRGBA } from '../helpers/fixtures.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const run = (script, args) => execFileSync('node', [join(ROOT, script), ...args], { encoding: 'utf8' });
@@ -32,16 +31,48 @@ test('CLI round trip: GIF → player → transparent GIF', () => {
   }
   assert.ok(frames.some((f) => /@/.test(f)), 'the red square should render as dense characters');
 
-  run('ascii2gif.mjs', [player, '--scale', '2', '-o', out]);
+  run('ascii2gif.mjs', [player, '-o', out]); // default scale 2
   const info = probeGif(out);
   assert.equal(info.frames, 8);
   assert.equal(info.fps, 10);
-  assert.equal(info.width, (20 + 2 * MARGIN) * CELL_W * 2);
-  assert.equal(info.height, (rows + 2 * MARGIN) * CELL_H * 2);
+  // Literals, not the imported constants: one 6×12 cell of margin per side, scale 2.
+  assert.equal(info.width, (20 + 2) * 6 * 2);
+  assert.equal(info.height, (rows + 2) * 12 * 2);
 
   const alpha = firstFrameAlpha(out);
   assert.ok(alpha.includes(0), 'background should be transparent');
   assert.ok(alpha.includes(255), 'glyphs should be opaque');
+});
+
+test('CLI pixel export: --scale 3 makes each glyph pixel a 3×3 block inside a one-cell margin', () => {
+  const dir = tempDir();
+  const player = join(dir, 'glyphs.mjs');
+  // One row: a red '@' and a green '#', on black.
+  const frame = '\x1b[38;2;255;0;0m@\x1b[38;2;0;255;0m#\x1b[0m';
+  writeFileSync(player, playerSource([frame], 100));
+  const out = join(dir, 'glyphs.gif');
+  run('ascii2gif.mjs', [player, '--scale', '3', '--bg', '000000', '-o', out]);
+
+  const cols = 2, rows = 1, scale = 3;
+  const info = probeGif(out);
+  assert.equal(info.width, (cols + 2) * 6 * scale);
+  assert.equal(info.height, (rows + 2) * 12 * scale);
+
+  // The glyphs at scale 1 with no margin: what each 3×3 block inside the margin must show.
+  const glyphs = renderFrameRGBA(parseAnsiFrame(frame), cols, rows, { background: '000000', scale: 1, margin: 0 });
+  const rgba = firstFrameRGBA(out);
+  let glyphPixels = 0;
+  for (let y = 0; y < info.height; y++) {
+    for (let x = 0; x < info.width; x++) {
+      const gx = Math.floor(x / scale) - 6, gy = Math.floor(y / scale) - 12; // minus one 6×12 cell of margin
+      const inside = gx >= 0 && gx < glyphs.width && gy >= 0 && gy < glyphs.height;
+      const want = inside ? [...glyphs.data.subarray((gy * glyphs.width + gx) * 4, (gy * glyphs.width + gx) * 4 + 4)] : [0, 0, 0, 255];
+      const got = [...rgba.subarray((y * info.width + x) * 4, (y * info.width + x) * 4 + 4)];
+      assert.deepEqual(got, want, `pixel ${x},${y}`);
+      if (inside && want[0] + want[1] > 0) glyphPixels++;
+    }
+  }
+  assert.ok(glyphPixels > 0 && glyphPixels % (scale * scale) === 0, 'glyph pixels come in whole 3×3 blocks');
 });
 
 test('CLI: solid --bg gives a fully opaque GIF', () => {

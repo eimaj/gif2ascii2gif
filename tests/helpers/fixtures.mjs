@@ -38,11 +38,16 @@ export function probeGif(path) {
   return { width: s.width, height: s.height, frames: Number(s.nb_read_frames), fps: num / den };
 }
 
-// Alpha values of the first frame, decoded by ffmpeg.
-export function firstFrameAlpha(path) {
-  const raw = execFileSync('ffmpeg', [
+// RGBA pixels of the first frame, decoded by ffmpeg.
+export function firstFrameRGBA(path) {
+  return execFileSync('ffmpeg', [
     '-v', 'error', '-i', path, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-',
   ], { maxBuffer: 1 << 28 });
+}
+
+// Alpha values of the first frame, decoded by ffmpeg.
+export function firstFrameAlpha(path) {
+  const raw = firstFrameRGBA(path);
   const alpha = new Uint8Array(raw.length / 4);
   for (let i = 0; i < alpha.length; i++) alpha[i] = raw[i * 4 + 3];
   return alpha;
