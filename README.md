@@ -11,7 +11,7 @@ Turn any GIF into a colored-ASCII animation that plays in your terminal. Then ch
 ## Requirements
 
 - Node 18+
-- `ffmpeg` and `ffprobe` 5.1 or later on your PATH (only for generating, not for playing; older versions lack `-fps_mode`)
+- `ffmpeg` 5.1 or later on your PATH (only for generating, not for playing; older versions lack `-fps_mode`); the test suite also uses `ffprobe`
 - A truecolor terminal (`COLORTERM=truecolor`)
 
 ## Generate some ASCII from your favourite GIF
@@ -63,8 +63,8 @@ Glyphs are built in for the character ramp, so it needs no fonts or extra packag
 
 ## How it works
 
-1. `ffprobe` reads the GIF's dimensions and per-frame delays. The player uses their average (delays under 20 ms count as 100 ms, as browsers do), clamped to 1–60 fps, the same rule the site uses.
-2. `ffmpeg` scales every frame to the target size and emits raw RGB pixels, one frame per GIF frame.
+1. The script downloads the GIF (or reads a local path) and walks its blocks with the same scanner the site uses (`site/lib/scan.mjs`) to get its dimensions and per-frame delays. The player uses their average (a frame with no delay counts as 0 ms, and delays under 20 ms count as 100 ms, as browsers do), clamped to 1–60 fps, the same rule the site uses.
+2. `ffmpeg` reads the same bytes on stdin, scales every frame to the target size and emits raw RGB pixels, one frame per GIF frame.
 3. The background color is detected as the most common color along the border of every frame. Pixels close to it become spaces; every other pixel gets a character from the ramp ` .:-=+*#%@` by how far it is from the background, colored with its own RGB value. With `--keep-bg`, the character is picked by brightness instead.
 4. The frames are embedded as strings in the generated player, which redraws them in place on a timer.
 
@@ -94,7 +94,7 @@ The local server applies `site/_headers` (the same security headers the host ser
 
 ## Layout
 
-- `site/lib/` is the shared conversion core, imported by both CLI scripts and the site, so they cannot drift: `core.mjs` (ramp, frame sizing, background detection, character picking, ANSI frames), `glyphs.mjs` (6x12 bitmaps), `render.mjs` (ANSI frames back to RGBA), `player.mjs` (the player template), `scan.mjs` (a copy-free walk of the GIF's block structure, used for the site's limits), `decode.mjs` (browser GIF decoding and resampling), `export.mjs` (fitting the browser GIF export to the source size), `fetch.mjs` (fetching a GIF by URL with a time and size limit), and `events.mjs` (the usage event schema and privacy note).
+- `site/lib/` is the shared conversion core, imported by both CLI scripts and the site, so they cannot drift: `core.mjs` (ramp, frame sizing, background detection, character picking, ANSI frames), `glyphs.mjs` (6x12 bitmaps), `render.mjs` (ANSI frames back to RGBA), `player.mjs` (the player template), `scan.mjs` (a copy-free walk of the GIF's block structure, used for the site's limits and for both paths' frame delays), `decode.mjs` (browser GIF decoding and resampling), `export.mjs` (fitting the browser GIF export to the source size), `fetch.mjs` (fetching a GIF by URL with a time and size limit), and `events.mjs` (the usage event schema and privacy note).
 - `site/vendor/` holds the vendored, unmodified [gifenc](https://github.com/mattdesl/gifenc) 1.0.3 and [gifuct-js](https://github.com/matt-way/gifuct-js) 2.1.2 (bundled with js-binary-schema-parser 2.0.3), each with its license and a `SOURCE.md` recording the source URL and SHA-256.
 - `tests/` holds unit, integration, and browser tests, plus `serve.mjs`.
 

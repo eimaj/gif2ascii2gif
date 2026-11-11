@@ -24,6 +24,7 @@
 - [x] 3.6 Add the CLI-vs-site parity test to `tests/integration/`: identical decoded frames through both code paths produce byte-identical player text, at several frame rates (7, 15, 24, 30, and 0.5 fps) and with uneven or zero GIF delays, with the same frame count and delay; a GIF with a frame outside its screen is refused by both. Verify: `node --test tests/integration` passes.
 - [x] 3.7 Fetch URLs in `site/lib/fetch.mjs`: read the body as a stream stopped once it passes 20 MB whatever its `Content-Length` says, give up after 30 seconds, and tell a timeout, a caller abort, and a cross-origin block apart, without `AbortSignal.any`. Verify: `node --test tests/unit/fetch.test.mjs` covers each path.
 - [x] 3.8 Scan the GIF's block structure in `site/lib/scan.mjs` before `parseGIF` (design D5): cap blocks at 1,264, refuse truncated or unknown blocks, and take the frame, code-size, and pixel checks from the scan. Verify: `tests/unit/scan.test.mjs`, and the 19.5 MB comment-flood test in `tests/unit/decode.test.mjs` is refused in under 1 s with under 32 MB of heap growth.
+- [x] 3.9 Take both paths' frame delays from the scan (design D2): the CLI reads the GIF's bytes itself, scans them instead of running ffprobe, and pipes them to ffmpeg, so a frame without a graphic control extension counts as 0 ms in both. Verify: the parity test with a GIF whose later frames have no graphic control extension gives 200 ms from both.
 
 ## 4. Page content
 
