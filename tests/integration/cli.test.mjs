@@ -8,7 +8,7 @@ import { DEFAULT_WIDTH, DEFAULT_BG_THRESHOLD } from '../../site/lib/core.mjs';
 import { parsePlayer, playerSource } from '../../site/lib/player.mjs';
 import { MAX_SCALE, parseAnsiFrame, renderFrameRGBA } from '../../site/lib/render.mjs';
 import { tempDir, makeGif, probeGif, firstFrameAlpha, firstFrameRGBA } from '../helpers/fixtures.mjs';
-import { RED, BLUE, encode, declaring, withSubBlockFlood } from '../helpers/gifs.mjs';
+import { RED, BLUE, PLAIN_TEXT, encode, declaring, beforeImage, withSubBlockFlood } from '../helpers/gifs.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const run = (script, args) => execFileSync('node', [join(ROOT, script), ...args], { encoding: 'utf8' });
@@ -104,6 +104,15 @@ test('CLI: bytes after the trailer, such as a second GIF appended to the file, a
   const r = gif2ascii(gif);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(parsePlayer(readFileSync(join(dir, 'out.mjs'), 'utf8')).frames.length, 2);
+});
+
+test('CLI: a plain-text extension is accepted, as on the site', () => {
+  const dir = tempDir();
+  const gif = join(dir, 'text.gif');
+  writeFileSync(gif, beforeImage(encode([{ w: 2, h: 2, palette: [RED, BLUE], index: [0, 0, 0, 0] }]), 0, PLAIN_TEXT));
+  const r = gif2ascii(gif);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(parsePlayer(readFileSync(join(dir, 'out.mjs'), 'utf8')).frames.length, 1);
 });
 
 test('CLI: an LZW minimum code size above 8 is refused by the shared check, not blamed on the screen', () => {

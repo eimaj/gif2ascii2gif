@@ -74,6 +74,8 @@ const ascii = (s) => [...new TextEncoder().encode(s)];
 export const COMMENT = [0x21, 0xfe, 0x02, ...ascii('hi'), 0x00];
 export const NETSCAPE = [0x21, 0xff, 0x0b, ...ascii('NETSCAPE2.0'), 0x03, 0x01, 0x00, 0x00, 0x00];
 export const ICC = [0x21, 0xff, 0x0b, ...ascii('ICCRGBG1012'), 0x04, 1, 2, 3, 4, 0x00];
+// A plain-text extension: a 12-byte text grid header (position, size, cell size, colors), then the text.
+export const PLAIN_TEXT = [0x21, 0x01, 0x0c, 0, 0, 0, 0, 8, 0, 8, 0, 8, 8, 1, 0, 0x02, ...ascii('hi'), 0x00];
 
 // `bytes` with the extension blocks `exts` inserted right before frame `frame`'s image descriptor
 // (0-based), so after that frame's graphic control extension.

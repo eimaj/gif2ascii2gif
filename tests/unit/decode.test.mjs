@@ -7,7 +7,7 @@ import {
 import { readFileSync } from 'node:fs';
 import { frameDelay, frameSize, MAX_WIDTH, CHAR_ASPECT } from '../../site/lib/core.mjs';
 import {
-  RED, BLUE, GREEN, WHITE, COMMENT, NETSCAPE, ICC, encode, declaring, beforeImage, codeSizeOffset, withExtensions, withSubBlockFlood,
+  RED, BLUE, GREEN, WHITE, COMMENT, NETSCAPE, ICC, PLAIN_TEXT, encode, declaring, beforeImage, codeSizeOffset, withExtensions, withSubBlockFlood,
 } from '../helpers/gifs.mjs';
 
 const pixel = (rgb, w, x, y) => [...rgb.subarray((y * w + x) * 3, (y * w + x) * 3 + 3)];
@@ -52,6 +52,18 @@ for (const [name, exts] of Object.entries(spacings)) {
     assert.deepEqual(frames.map((f) => pixel(f, 1, 0, 0)), [RED, BLUE, WHITE]);
   });
 }
+
+test('decodeGif: plain-text extensions are accepted and not drawn, before the first frame or between frames', () => {
+  const bytes = encode([
+    { w: 1, h: 1, palette: [RED, BLUE], index: [0], delay: 200 },
+    { w: 1, h: 1, palette: [GREEN, RED], index: [0], transparentIndex: 0, delay: 200 },
+  ]);
+  for (const withText of [withExtensions(bytes, 1, PLAIN_TEXT), beforeImage(bytes, 1, PLAIN_TEXT), beforeImage(withExtensions(bytes, 2, PLAIN_TEXT), 1, PLAIN_TEXT)]) {
+    const { frames, delayMs } = decodeGif(withText);
+    assert.deepEqual(frames.map((f) => pixel(f, 1, 0, 0)), [RED, RED]); // frame 2 keeps its transparency
+    assert.equal(delayMs, 200);
+  }
+});
 
 test('decodeGif: more than 300 frames throws a frames LimitError with the actual count', () => {
   const frame = { w: 1, h: 1, palette: [RED, BLUE], index: [0] };

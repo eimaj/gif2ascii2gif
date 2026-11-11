@@ -58,11 +58,15 @@ Before building any object from the GIF, the page SHALL walk its block structure
 - **THEN** the page shows an error saying the file is not a readable GIF and keeps the previous result
 
 ### Requirement: Extension handling
-The page SHALL apply each graphic control extension (delay, disposal, transparency) to the next image, whatever number or order of comment and application extensions lies between them.
+The page SHALL apply each graphic control extension (delay, disposal, transparency) to the next image, whatever number or order of comment, application, and plain-text extensions lies between them. It SHALL accept plain-text extensions and SHALL NOT draw their text, as browsers do.
 
 #### Scenario: Extensions between a graphic control extension and its image
 - **WHEN** a visitor loads a GIF whose transparent frame has two comments, two application extensions, or a comment then an application extension between its graphic control extension and its image
 - **THEN** the frame's transparent pixels show the canvas underneath and its disposal applies
+
+#### Scenario: Plain-text extension
+- **WHEN** a visitor loads a GIF89a with a plain-text extension before its first frame or between frames
+- **THEN** it is converted with every frame, and the text is not drawn
 
 ### Requirement: Pixel limits
 The page SHALL refuse, without converting and with the same kind of message as the size limits, a GIF whose declared screen is wider or taller than 1024 pixels, any of whose frame rectangles extends past the screen, that has more than 50 megapixels across all frames (frames × screen area), or whose screen is more than 5 times taller than it is wide. They SHALL be checked from the header before any frame is decompressed; a refused screen size SHALL come with a resize hint.

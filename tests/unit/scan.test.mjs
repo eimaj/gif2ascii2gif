@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scanGif, maxSubBlocks, MalformedGifError } from '../../site/lib/scan.mjs';
 import {
-  RED, BLUE, COMMENT, NETSCAPE, ICC, encode, declaring, beforeImage, withExtensions, withoutGce, withSubBlockFlood,
+  RED, BLUE, COMMENT, NETSCAPE, ICC, PLAIN_TEXT, encode, declaring, beforeImage, withExtensions, withoutGce, withSubBlockFlood,
 } from '../helpers/gifs.mjs';
 
 const frame = { w: 1, h: 1, palette: [RED, BLUE], index: [0] };
@@ -27,6 +27,15 @@ test('scanGif: a frame takes disposal and transparency from its graphic control 
 test('scanGif: a graphic control extension sets only the next frame\'s delay; a frame with none gets 0', () => {
   const bytes = withoutGce(encode([250, 500, 70, 40].map((delay) => ({ ...frame, delay }))), [1, 3]);
   assert.deepEqual(scanGif(bytes).frames.map((f) => f.delayMs), [250, 0, 70, 0]);
+});
+
+test('scanGif: records plain-text extension byte ranges among the first maxBlocks blocks', () => {
+  const bytes = withExtensions(encode([frame]), 3, PLAIN_TEXT);
+  const at = 13 + 3 * (1 << ((bytes[10] & 7) + 1)); // past the header, screen descriptor, and global color table
+  const ranges = [0, 1, 2].map((i) => [at + i * PLAIN_TEXT.length, at + (i + 1) * PLAIN_TEXT.length]);
+  assert.deepEqual(scanGif(bytes).plainText, ranges);
+  assert.deepEqual(scanGif(bytes, { maxBlocks: 2 }).plainText, ranges.slice(0, 2));
+  assert.equal(scanGif(bytes, { maxBlocks: 2 }).blockCount, 3 + 3);
 });
 
 test('scanGif: counts every frame but records only the first maxFrames', () => {

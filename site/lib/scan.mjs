@@ -11,7 +11,7 @@ export class MalformedGifError extends Error {
   }
 }
 
-const EXTENSION = 0x21, IMAGE = 0x2c, TRAILER = 0x3b, GCE = 0xf9;
+const EXTENSION = 0x21, IMAGE = 0x2c, TRAILER = 0x3b, GCE = 0xf9, PLAIN_TEXT = 0x01;
 
 // Bytes in the color table that a packed-fields byte declares (0 when it has none).
 const colorTableSize = (flags) => (flags & 0x80 ? 3 * (1 << ((flags & 7) + 1)) : 0);
@@ -43,8 +43,9 @@ function skipSubBlocks(bytes, p) {
 // the last delay forward).
 // A file that ends cleanly between blocks without a trailer is accepted, as browsers do. `end` is the
 // offset just past the trailer (or the file's length without one): decoders stop there, so bytes after
-// it, such as a second GIF appended to the file, are not part of the GIF.
-export function scanGif(bytes, { maxFrames = Infinity } = {}) {
+// it, such as a second GIF appended to the file, are not part of the GIF. `plainText` lists the
+// [start, end) byte ranges of the plain-text extensions among the first `maxBlocks` blocks.
+export function scanGif(bytes, { maxFrames = Infinity, maxBlocks = Infinity } = {}) {
   const u16 = (p) => bytes[p] | (bytes[p + 1] << 8);
   const sig = String.fromCharCode(...bytes.subarray(0, 6));
   if (sig !== 'GIF87a' && sig !== 'GIF89a') throw new MalformedGifError('missing GIF header');
@@ -53,7 +54,7 @@ export function scanGif(bytes, { maxFrames = Infinity } = {}) {
   let p = 13 + colorTableSize(bytes[10]);
   if (p > bytes.length) throw new MalformedGifError('truncated global color table');
 
-  const frames = [];
+  const frames = [], plainText = [];
   const NO_GCE = { delayMs: 0, disposal: 0, transparentIndex: null };
   let frameCount = 0, blockCount = 0, subBlockCount = 0, gce = NO_GCE;
   const chain = (start) => {
@@ -73,7 +74,9 @@ export function scanGif(bytes, { maxFrames = Infinity } = {}) {
         const packed = bytes[p + 3];
         gce = { delayMs: u16(p + 4) * 10, disposal: (packed >> 2) & 7, transparentIndex: packed & 1 ? bytes[p + 6] : null };
       }
+      const start = p;
       p = chain(p + 2);
+      if (bytes[start + 1] === PLAIN_TEXT && blockCount <= maxBlocks) plainText.push([start, p]);
     } else if (introducer === IMAGE) {
       if (p + 10 >= bytes.length) throw new MalformedGifError('truncated image descriptor');
       const codeAt = p + 10 + colorTableSize(bytes[p + 9]);
@@ -94,5 +97,5 @@ export function scanGif(bytes, { maxFrames = Infinity } = {}) {
     throw new MalformedGifError(`${count(subBlockCount)} data sub-blocks in ${count(bytes.length)} bytes; the limit is ${count(limit)}`);
   }
   const end = p < bytes.length ? p + 1 : p;
-  return { width, height, frameCount, blockCount, subBlockCount, frames, end };
+  return { width, height, frameCount, blockCount, subBlockCount, frames, plainText, end };
 }

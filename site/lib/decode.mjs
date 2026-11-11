@@ -117,14 +117,30 @@ export function checkPixels(scan) {
   if (total > MAX_TOTAL_PIXELS) throw new LimitError('total', MAX_TOTAL_PIXELS, total);
 }
 
+// A copy of `bytes` as an ArrayBuffer, without the [start, end) `ranges` (sorted, not overlapping).
+// gifuct-js throws on a plain-text extension, which browsers ignore, so those are cut before parsing.
+function withoutRanges(bytes, ranges) {
+  const removed = ranges.reduce((n, [start, end]) => n + end - start, 0);
+  const out = new Uint8Array(bytes.length - removed);
+  let from = 0, to = 0;
+  for (const [start, end] of ranges) {
+    out.set(bytes.subarray(from, start), to);
+    to += start - from;
+    from = end;
+  }
+  out.set(bytes.subarray(from), to);
+  return out.buffer;
+}
+
 // Scan the block structure and check every limit, then parse, then composite every frame to full
 // size, flattened to RGB on white. Nothing is parsed into objects until the scan has passed.
+// Plain-text extensions are accepted and not drawn, as browsers do.
 export function decodeGif(buffer) {
   const bytes = new Uint8Array(buffer);
   checkFileSize(bytes.length);
   let scan;
   try {
-    scan = scanGif(bytes, { maxFrames: MAX_FRAMES });
+    scan = scanGif(bytes, { maxFrames: MAX_FRAMES, maxBlocks: MAX_BLOCKS });
   } catch (err) {
     if (err instanceof MalformedGifError) throw new NotAGifError(err.message, { cause: err });
     throw err;
@@ -139,7 +155,7 @@ export function decodeGif(buffer) {
   if (height / width > MAX_ASPECT) throw new LimitError('aspect', MAX_ASPECT, height / width);
   let gif;
   try {
-    gif = parseGIF(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
+    gif = parseGIF(withoutRanges(bytes, scan.plainText));
   } catch (err) {
     throw new NotAGifError(err.message, { cause: err });
   }
