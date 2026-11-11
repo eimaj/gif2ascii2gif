@@ -42,6 +42,17 @@ The page SHALL refuse, without converting, a GIF with more than 300 frames or a 
 - **WHEN** a visitor loads a 450-frame GIF
 - **THEN** no conversion runs and the page says the GIF has 450 frames, the limit is 300, and why
 
+### Requirement: Block structure check
+Before building any object from the GIF, the page SHALL walk its block structure without copying data, and SHALL refuse, without converting and with the same kind of message as the size limits, a GIF with more than 1,264 blocks (frames plus extensions such as comments: 4 per frame at 300 frames, plus 64). It SHALL refuse as not a readable GIF one with a truncated sub-block chain or an unknown block type.
+
+#### Scenario: Comment flood
+- **WHEN** a visitor loads a 19.5 MB GIF holding one frame and 6.5 million empty comment extensions
+- **THEN** no conversion runs and the page says the GIF has 6,500,003 blocks, the limit is 1,264, and why, without the tab freezing
+
+#### Scenario: Truncated file
+- **WHEN** a visitor loads a GIF that ends inside a frame's data
+- **THEN** the page shows an error saying the file is not a readable GIF and keeps the previous result
+
 ### Requirement: Pixel limits
 The page SHALL refuse, without converting and with the same kind of message as the size limits, a GIF whose declared screen is wider or taller than 1024 pixels, any of whose frame rectangles extends past the screen, that has more than 50 megapixels across all frames (frames × screen area), or whose screen is more than 5 times taller than it is wide. They SHALL be checked from the header before any frame is decompressed; a refused screen size SHALL come with a resize hint.
 
