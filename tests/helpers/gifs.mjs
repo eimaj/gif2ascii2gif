@@ -57,3 +57,14 @@ export function declaring({ screen, frame, at, interlaced = false, codeSize, cou
   }
   return bytes;
 }
+
+// `bytes` with `count` copies of the extension `ext` (default: an empty comment, 21 FE 00) inserted
+// before the first block, after the header and global color table.
+export function withExtensions(bytes, count, ext = [0x21, 0xfe, 0x00]) {
+  const at = 13 + colorTableSize(bytes[10]);
+  const out = new Uint8Array(bytes.length + count * ext.length);
+  out.set(bytes.subarray(0, at), 0);
+  for (let i = 0, p = at; i < count; i++) for (const b of ext) out[p++] = b;
+  out.set(bytes.subarray(at), at + count * ext.length);
+  return out;
+}

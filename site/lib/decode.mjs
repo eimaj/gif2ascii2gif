@@ -2,8 +2,14 @@
 // Standard JS only, so it also runs under Node for tests.
 import { parseGIF, decompressFrame } from '../vendor/gifuct-js/gifuct.bundle.mjs';
 import { frameDelay } from './core.mjs';
+import { scanGif, MalformedGifError } from './scan.mjs';
 
 export const MAX_FRAMES = 300;
+// Blocks: image descriptors plus extensions (graphic control, comment, application, plain text).
+// The decoder builds an object per block, so a file of millions of 3-byte comments would cost
+// gigabytes. A frame usually takes 2 blocks (graphic control + image); 4 per frame leaves room for a
+// per-frame comment or application extension, and 64 more cover file-level ones (loop count, XMP, ICC).
+export const MAX_BLOCKS = 4 * MAX_FRAMES + 64;
 export const MAX_BYTES = 20 * 1024 * 1024;
 export const MAX_SIDE = 1024; // pixels per side of the GIF's screen; every frame must fit inside the screen
 // Frames × screen area. Decoding keeps one RGB copy of the screen per frame (3 B/px, so 150 MB at
@@ -17,6 +23,7 @@ export const MAX_ASPECT = 5;
 const count = (n) => n.toLocaleString('en-US');
 const LIMIT_MESSAGES = {
   frames: (actual, limit) => `This GIF has ${actual} frames; the limit is ${limit}.`,
+  blocks: (actual, limit) => `This GIF has ${count(actual)} blocks (frames plus extensions such as comments); the limit is ${count(limit)}.`,
   bytes: (actual, limit) => `This file is ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
   download: (actual, limit) => `The download was stopped after ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
   pixels: (actual, limit) => `This GIF is ${actual.width}×${actual.height} pixels; the limit is ${limit}×${limit}. Resize it to at most ${limit} pixels on each side and try again.`,
@@ -31,7 +38,7 @@ export class LimitError extends Error {
   constructor(kind, limit, actual) {
     super(LIMIT_MESSAGES[kind](actual, limit));
     this.name = 'LimitError';
-    // 'frames' | 'bytes' | 'download' | 'total' | 'aspect': numbers.
+    // 'frames' | 'blocks' | 'bytes' | 'download' | 'total' | 'aspect': numbers.
     // 'pixels': limit is MAX_SIDE, actual the screen { width, height }.
     // 'bounds': limit is the screen { width, height }, actual the frame { left, top, width, height }.
     this.kind = kind;
@@ -84,12 +91,11 @@ export async function readCapped(body, limit = MAX_BYTES) {
 export const MIN_CODE_SIZE = 2;
 export const MAX_CODE_SIZE = 8;
 
-export function checkCodeSizes(gif) {
-  for (const f of gif.frames) {
-    if (!f.image) continue;
-    const size = f.image.data.minCodeSize;
-    if (!(size >= MIN_CODE_SIZE && size <= MAX_CODE_SIZE)) {
-      throw new NotAGifError(`LZW minimum code size ${size} is outside ${MIN_CODE_SIZE}–${MAX_CODE_SIZE}`);
+// `scan` is a scanGif result (scan.mjs): the frames' LZW minimum code sizes.
+export function checkCodeSizes(scan) {
+  for (const { codeSize } of scan.frames) {
+    if (!(codeSize >= MIN_CODE_SIZE && codeSize <= MAX_CODE_SIZE)) {
+      throw new NotAGifError(`LZW minimum code size ${codeSize} is outside ${MIN_CODE_SIZE}–${MAX_CODE_SIZE}`);
     }
   }
 }
@@ -97,42 +103,50 @@ export function checkCodeSizes(gif) {
 // The GIF header can declare sizes far beyond its byte size; check them before any pixel buffer exists.
 // Every frame must fit inside the screen, so the screen also bounds each frame's own pixels, and the
 // CLI (whose ffmpeg drops a frame that lies wholly outside the screen) never sees a different frame count.
-export function checkPixels(gif) {
-  const { width, height } = gif.lsd;
+// `scan` is a scanGif result (scan.mjs): the screen { width, height } and the frame rectangles.
+export function checkPixels(scan) {
+  const { width, height } = scan;
   if (width > MAX_SIDE || height > MAX_SIDE) throw new LimitError('pixels', MAX_SIDE, { width, height });
-  let frameCount = 0;
-  for (const f of gif.frames) {
-    if (!f.image) continue;
-    frameCount++;
-    const { left, top, width: fw, height: fh } = f.image.descriptor;
+  for (const { left, top, width: fw, height: fh } of scan.frames) {
     if (left + fw > width || top + fh > height) {
       throw new LimitError('bounds', { width, height }, { left, top, width: fw, height: fh });
     }
   }
-  const total = frameCount * width * height;
+  const total = scan.frames.length * width * height;
   if (total > MAX_TOTAL_PIXELS) throw new LimitError('total', MAX_TOTAL_PIXELS, total);
 }
 
-// Parse and check limits, then composite every frame to full size, flattened to RGB on white.
+// Scan the block structure and check every limit, then parse, then composite every frame to full
+// size, flattened to RGB on white. Nothing is parsed into objects until the scan has passed.
 export function decodeGif(buffer) {
   const bytes = new Uint8Array(buffer);
   checkFileSize(bytes.length);
-  const sig = String.fromCharCode(...bytes.subarray(0, 6));
-  if (sig !== 'GIF87a' && sig !== 'GIF89a') throw new NotAGifError('missing GIF header');
+  let scan;
+  try {
+    scan = scanGif(bytes, { maxFrames: MAX_FRAMES });
+  } catch (err) {
+    if (err instanceof MalformedGifError) throw new NotAGifError(err.message, { cause: err });
+    throw err;
+  }
+  if (scan.frameCount > MAX_FRAMES) throw new LimitError('frames', MAX_FRAMES, scan.frameCount);
+  if (scan.blockCount > MAX_BLOCKS) throw new LimitError('blocks', MAX_BLOCKS, scan.blockCount);
+  if (scan.frameCount === 0) throw new NotAGifError('no frames');
+  const { width, height } = scan;
+  if (!width || !height) throw new NotAGifError('zero size');
+  checkCodeSizes(scan);
+  checkPixels(scan);
+  if (height / width > MAX_ASPECT) throw new LimitError('aspect', MAX_ASPECT, height / width);
   let gif;
   try {
     gif = parseGIF(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
   } catch (err) {
     throw new NotAGifError(err.message, { cause: err });
   }
-  const frameCount = gif.frames.filter((f) => f.image).length;
-  if (frameCount > MAX_FRAMES) throw new LimitError('frames', MAX_FRAMES, frameCount);
-  if (frameCount === 0) throw new NotAGifError('no frames');
-  const { width, height } = gif.lsd;
-  if (!width || !height) throw new NotAGifError('zero size');
-  checkCodeSizes(gif);
-  checkPixels(gif);
-  if (height / width > MAX_ASPECT) throw new LimitError('aspect', MAX_ASPECT, height / width);
+  // The decoder stops at an extension it does not know, so it can see fewer frames than the scan.
+  const parsedFrames = gif.frames.filter((f) => f.image).length;
+  if (parsedFrames !== scan.frameCount) {
+    throw new NotAGifError(`the decoder read ${parsedFrames} of ${scan.frameCount} frames`);
+  }
   // Decompress lazily, one frame per composite step, so only one frame's pixels are alive at a time.
   const delays = [];
   function* patches() {

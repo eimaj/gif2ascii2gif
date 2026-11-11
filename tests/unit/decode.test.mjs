@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MAX_FRAMES, MAX_BYTES, MAX_SIDE, MAX_TOTAL_PIXELS, MAX_ASPECT, LimitError, NotAGifError,
+  MAX_FRAMES, MAX_BLOCKS, MAX_BYTES, MAX_SIDE, MAX_TOTAL_PIXELS, MAX_ASPECT, LimitError, NotAGifError,
   decodeGif, checkPixels, readCapped, resampleArea, flattenOnWhite, compositeFrames,
 } from '../../site/lib/decode.mjs';
 import { readFileSync } from 'node:fs';
 import { frameDelay, frameSize, MAX_WIDTH, CHAR_ASPECT } from '../../site/lib/core.mjs';
-import { RED, BLUE, GREEN, WHITE, encode, declaring, codeSizeOffset } from '../helpers/gifs.mjs';
+import { RED, BLUE, GREEN, WHITE, encode, declaring, codeSizeOffset, withExtensions } from '../helpers/gifs.mjs';
 
 const pixel = (rgb, w, x, y) => [...rgb.subarray((y * w + x) * 3, (y * w + x) * 3 + 3)];
 
@@ -43,6 +43,46 @@ test('decodeGif: more than 300 frames throws a frames LimitError with the actual
     assert.match(err.message, /301 frames.*300/);
     return true;
   });
+});
+
+test('decodeGif: a comment flood is refused by the block scan before the decoder builds any object', () => {
+  // The round-5 repro: 6.5 million empty comments and one 1×1 frame in 19.5 MB. Parsing it took about
+  // 3 s and 3 GB of heap.
+  const bytes = withExtensions(encode([{ w: 1, h: 1, palette: [RED, BLUE], index: [0] }]), 6_500_000);
+  assert.ok(bytes.length <= MAX_BYTES);
+  const heapBefore = process.memoryUsage().heapUsed;
+  const started = performance.now();
+  assert.throws(() => decodeGif(bytes), (err) => {
+    assert.ok(err instanceof LimitError);
+    assert.equal(err.kind, 'blocks');
+    assert.equal(err.limit, MAX_BLOCKS);
+    assert.equal(err.actual, 6_500_000 + 3); // + the loop-count extension, a graphic control, the image
+    assert.equal(err.message, 'This GIF has 6,500,003 blocks (frames plus extensions such as comments); the limit is 1,264.');
+    return true;
+  });
+  assert.ok(performance.now() - started < 1000);
+  assert.ok(process.memoryUsage().heapUsed - heapBefore < 32 << 20);
+});
+
+test('decodeGif: exactly MAX_BLOCKS blocks decode, one more is refused', () => {
+  const frame = { w: 1, h: 1, palette: [RED, BLUE], index: [0] };
+  assert.equal(MAX_BLOCKS, 4 * MAX_FRAMES + 64);
+  const base = encode([frame, frame]); // loop-count extension + 2 × (graphic control + image) = 5 blocks
+  assert.equal(decodeGif(withExtensions(base, MAX_BLOCKS - 5)).frames.length, 2);
+  assert.throws(() => decodeGif(withExtensions(base, MAX_BLOCKS - 4)), (err) => err instanceof LimitError && err.kind === 'blocks');
+});
+
+test('decodeGif: a 450-frame GIF reports its frames, not its blocks', () => {
+  const bytes = encode(Array(450).fill({ w: 1, h: 1, palette: [RED, BLUE], index: [0] }));
+  assert.throws(() => decodeGif(bytes), (err) => err instanceof LimitError && err.kind === 'frames' && err.actual === 450);
+});
+
+test('decodeGif: structurally malformed input is not a readable GIF', () => {
+  const bytes = encode([{ w: 1, h: 1, palette: [RED, BLUE], index: [0] }]);
+  assert.throws(() => decodeGif(bytes.subarray(0, -3)), (err) => err instanceof NotAGifError && /truncated sub-block chain/.test(err.message));
+  // An extension label the decoder does not know stops it early, so it would see fewer frames.
+  const unknown = withExtensions(bytes, 1, [0x21, 0x99, 0x01, 0x00, 0x00]);
+  assert.throws(() => decodeGif(unknown), (err) => err instanceof NotAGifError && /decoder read 0 of 1 frames/.test(err.message));
 });
 
 test('decodeGif: oversized input throws a bytes LimitError before parsing', () => {
@@ -154,10 +194,10 @@ test('decodeGif: frames × screen size over the total budget throws a total Limi
   });
 });
 
-// A parsed-GIF stand-in for checkPixels: a screen and `count` frames covering it.
+// A scanGif-result stand-in for checkPixels: a screen and `count` frames covering it.
 const header = (width, height, count = 1) => ({
-  lsd: { width, height },
-  frames: Array(count).fill({ image: { descriptor: { left: 0, top: 0, width, height } } }),
+  width, height,
+  frames: Array(count).fill({ left: 0, top: 0, width, height }),
 });
 const kindOf = (gif) => {
   try { checkPixels(gif); return null; } catch (err) { if (err instanceof LimitError) return err.kind; throw err; }
@@ -176,7 +216,7 @@ test('checkPixels: exact boundaries', () => {
   assert.equal(kindOf(header(1000, 1000, 50)), null); // exactly 50,000,000
   assert.equal(kindOf(header(1000, 1000, 51)), 'total');
   const overhang = header(100, 100);
-  overhang.frames = [{ image: { descriptor: { left: 1, top: 0, width: 100, height: 100 } } }];
+  overhang.frames = [{ left: 1, top: 0, width: 100, height: 100 }];
   assert.equal(kindOf(overhang), 'bounds');
 });
 
