@@ -8,6 +8,7 @@ import { DEFAULT_WIDTH, DEFAULT_BG_THRESHOLD } from '../../site/lib/core.mjs';
 import { parsePlayer, playerSource } from '../../site/lib/player.mjs';
 import { MAX_SCALE, parseAnsiFrame, renderFrameRGBA } from '../../site/lib/render.mjs';
 import { tempDir, makeGif, probeGif, firstFrameAlpha, firstFrameRGBA } from '../helpers/fixtures.mjs';
+import { withSubBlockFlood } from '../helpers/gifs.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const run = (script, args) => execFileSync('node', [join(ROOT, script), ...args], { encoding: 'utf8' });
@@ -83,6 +84,14 @@ test('CLI: solid --bg gives a fully opaque GIF', () => {
   run('gif2ascii.mjs', [gif, '-o', player]);
   run('ascii2gif.mjs', [player, '--bg', '000000', '--scale', '1', '-o', out]);
   assert.ok(firstFrameAlpha(out).every((a) => a === 255));
+});
+
+test('CLI: a sub-block flood is refused by the shared scan before ffmpeg runs', () => {
+  const gif = join(tempDir(), 'flood.gif');
+  writeFileSync(gif, withSubBlockFlood('comment', 100_000));
+  const r = spawnSync('node', [join(ROOT, 'gif2ascii.mjs'), gif, '-o', join(dirname(gif), 'flood.mjs')], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^gif2ascii: not a readable GIF \(100,004 data sub-blocks in 200,\d{3} bytes; the limit is 7,\d{3}\)$/m);
 });
 
 test('CLI: option checks use the shared limits and background parser', () => {
