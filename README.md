@@ -64,7 +64,7 @@ Glyphs are built in for the character ramp, so it needs no fonts or extra packag
 ## How it works
 
 1. The script downloads the GIF (or reads a local path or `file:` URL) and walks its blocks with the same scanner the site uses (`site/lib/scan.mjs`) to get its dimensions and per-frame delays. The player uses their average (a frame with no delay counts as 0 ms, and delays under 20 ms count as 100 ms, as browsers do), clamped to 1–60 fps, the same rule the site uses.
-2. `ffmpeg` reads the same bytes on stdin, scales every frame to the target size and emits raw RGB pixels, one frame per GIF frame.
+2. `ffmpeg` reads the same bytes, up to the GIF's trailer, from a temporary file, scales every frame to the target size and emits raw RGB pixels, one frame per GIF frame.
 3. The background color is detected as the most common color along the border of every frame. Pixels close to it become spaces; every other pixel gets a character from the ramp ` .:-=+*#%@` by how far it is from the background, colored with its own RGB value. With `--keep-bg`, the character is picked by brightness instead.
 4. The frames are embedded as strings in the generated player, which redraws them in place on a timer.
 
