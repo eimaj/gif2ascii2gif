@@ -1,14 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_WIDTH, DEFAULT_BG_THRESHOLD } from '../../site/lib/core.mjs';
 import { parsePlayer, playerSource } from '../../site/lib/player.mjs';
 import { MAX_SCALE, parseAnsiFrame, renderFrameRGBA } from '../../site/lib/render.mjs';
 import { tempDir, makeGif, probeGif, firstFrameAlpha, firstFrameRGBA } from '../helpers/fixtures.mjs';
-import { RED, BLUE, PLAIN_TEXT, encode, declaring, beforeImage, withSubBlockFlood } from '../helpers/gifs.mjs';
+import { RED, BLUE, PLAIN_TEXT, encode, declaring, beforeImage, withExtensions, withSubBlockFlood } from '../helpers/gifs.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const run = (script, args) => execFileSync('node', [join(ROOT, script), ...args], { encoding: 'utf8' });
@@ -121,6 +121,33 @@ test('CLI: an LZW minimum code size above 8 is refused by the shared check, not 
   const r = gif2ascii(gif);
   assert.equal(r.status, 1);
   assert.match(r.stderr, /^gif2ascii: not a readable GIF \(LZW minimum code size 9 is outside 2–8\)$/m);
+});
+
+test('CLI: a zero-size screen is refused before ffmpeg runs', () => {
+  const gif = join(tempDir(), 'zero.gif');
+  writeFileSync(gif, declaring({ screen: [0, 0], frame: [0, 0] }));
+  const r = gif2ascii(gif);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^gif2ascii: not a readable GIF \(zero size\)$/m);
+});
+
+test('CLI: when ffmpeg fails on a large input, its own error is reported and the temporary file is removed', () => {
+  const dir = tempDir();
+  const bin = join(dir, 'bin'), tmp = join(dir, 'tmp');
+  mkdirSync(bin);
+  mkdirSync(tmp);
+  writeFileSync(join(bin, 'ffmpeg'), '#!/bin/sh\necho "fake ffmpeg failed" >&2\nexit 1\n', { mode: 0o755 });
+  // A 2 MB comment of 255-byte sub-blocks, far more than a pipe buffer holds.
+  const comment = [0x21, 0xfe, ...Array.from({ length: 8000 }, () => [255, ...Array(255).fill(0x78)]).flat(), 0x00];
+  const gif = join(dir, 'large.gif');
+  writeFileSync(gif, withExtensions(encode([{ w: 1, h: 1, palette: [RED, BLUE], index: [0] }]), 1, comment));
+  const r = spawnSync(process.execPath, [join(ROOT, 'gif2ascii.mjs'), gif, '-o', join(dir, 'out.mjs')], {
+    encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: tmp },
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /fake ffmpeg failed/);
+  assert.doesNotMatch(r.stderr, /EPIPE/);
+  assert.deepEqual(readdirSync(tmp), []);
 });
 
 test('CLI: option checks use the shared limits and background parser', () => {

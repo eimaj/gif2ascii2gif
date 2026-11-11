@@ -2,7 +2,8 @@
 // Convert a GIF (URL) into a standalone, colored-ASCII terminal player script.
 // Usage: node gif2ascii.mjs <gif-url> [--width 40] [--bg-threshold 40] [--keep-bg] [-o out.mjs]
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -59,6 +60,7 @@ function probe(bytes) {
     throw err;
   }
   if (scan.frameCount === 0) throw new Error('not a readable GIF (no frames)');
+  if (!scan.width || !scan.height) throw new Error('not a readable GIF (zero size)');
   return {
     width: scan.width, height: scan.height, frameCount: scan.frameCount, end: scan.end,
     delayMs: frameDelay(scan.frames.map((f) => f.delayMs)),
@@ -67,13 +69,22 @@ function probe(bytes) {
 
 // One RGB frame per GIF frame (no frame-rate resampling), scaled with area averaging. `bytes` are the
 // scanned GIF only (up to its trailer), so ffmpeg, which would go on to decode a second GIF appended
-// to the file, decodes exactly what was scanned.
+// to the file, decodes exactly what was scanned. They go through a temporary file rather than stdin,
+// so ffmpeg reads at its own pace and an early ffmpeg failure reports its own error, not a broken pipe.
 function extractFrames(bytes, w, h) {
-  const raw = execFileSync('ffmpeg', [
-    '-v', 'error', '-f', 'gif', '-i', 'pipe:0',
-    '-vf', `scale=${w}:${h}:flags=area`, '-fps_mode', 'passthrough',
-    '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-',
-  ], { input: bytes, maxBuffer: 1 << 30 });
+  const dir = mkdtempSync(join(tmpdir(), 'gif2ascii-'));
+  let raw;
+  try {
+    const gif = join(dir, 'input.gif');
+    writeFileSync(gif, bytes);
+    raw = execFileSync('ffmpeg', [
+      '-v', 'error', '-nostdin', '-f', 'gif', '-i', gif,
+      '-vf', `scale=${w}:${h}:flags=area`, '-fps_mode', 'passthrough',
+      '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-',
+    ], { maxBuffer: 1 << 30 });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
   const size = w * h * 3;
   if (raw.length === 0 || raw.length % size !== 0) {
     throw new Error(`unexpected ffmpeg output: ${raw.length} bytes is not a multiple of frame size ${size}`);
