@@ -46,7 +46,7 @@ Each non-space character SHALL carry its pixel's 24-bit color as an ANSI `38;2;R
 - **THEN** one color escape precedes all three characters
 
 ### Requirement: Glyph rendering
-Rendering frames to pixels SHALL draw each ramp character as a fixed 6×12 bitmap in its ANSI color, with a one-cell margin, scaled by an integer factor (1–8) using nearest-neighbor. The background SHALL be fully transparent by default or a solid hex color when given.
+Rendering frames to pixels SHALL draw each ramp character as a fixed 6×12 bitmap in its ANSI color. The background SHALL be fully transparent by default or a solid hex color when given. Margin and scale belong to the exporter: the CLI's are in "CLI pixel export", the browser's in the web-converter "Exports" requirement.
 
 #### Scenario: Transparent export
 - **WHEN** frames are rendered with the default background
@@ -55,6 +55,13 @@ Rendering frames to pixels SHALL draw each ramp character as a fixed 6×12 bitma
 #### Scenario: Unknown character
 - **WHEN** a frame contains a character with no glyph
 - **THEN** rendering fails with an error naming the character
+
+### Requirement: CLI pixel export
+`ascii2gif.mjs` SHALL surround the glyph grid with a one-cell margin and scale the result by an integer factor (1–8, default 2) using nearest-neighbor.
+
+#### Scenario: CLI scale
+- **WHEN** `ascii2gif.mjs` is run with `--scale 3`
+- **THEN** each glyph pixel becomes a 3×3 block and the grid has a one-cell margin on every side
 
 ### Requirement: Standalone player format
 The player SHALL be a single ES module that contains its frames and frame delay, needs only Node, loops at the source frame rate in the terminal's alternate screen with the cursor hidden, and restores the terminal on exit or Ctrl-C.
