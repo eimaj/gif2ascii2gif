@@ -128,15 +128,13 @@ test('the downloaded player holds the current frames, width, and delay', async (
   }
 });
 
-test('a Copy button puts the exact CLI command on the clipboard', async ({ page, context }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+test('the CLI section is gone and a link points to the repo README', async ({ page }) => {
   await page.goto('/');
-  const button = page.locator('button[data-copy="cmd-clone"]');
-  await button.click();
-  await expect(button).toHaveText('Copied');
-  const copied = await page.evaluate(() => navigator.clipboard.readText());
-  expect(copied).toBe(await page.locator('#cmd-clone').textContent());
-  expect(copied).toBe('git clone https://github.com/eimaj/gif2ascii2gif.git && cd gif2ascii2gif');
+  await expect(page.getByRole('heading', { name: 'Use it from the command line' })).toHaveCount(0);
+  await expect(page.locator('button[data-copy], .command')).toHaveCount(0);
+  const link = page.getByRole('link', { name: 'on GitHub' });
+  await expect(link).toHaveCount(1);
+  await expect(link).toHaveAttribute('href', 'https://github.com/eimaj/gif2ascii2gif#readme');
 });
 
 test('the page is dark by default, light when the system prefers light', async ({ page }) => {
@@ -362,7 +360,7 @@ test('a hash deep link opens its tab on load and on hash change', async ({ page 
   await expectSelected(page, 'Credits');
   await page.evaluate(() => { location.hash = '#privacy'; });
   await expectSelected(page, 'Privacy');
-  await page.evaluate(() => { location.hash = '#cli'; }); // not a tab: the selection stays
+  await page.evaluate(() => { location.hash = '#converter'; }); // not a tab: the selection stays
   await expectSelected(page, 'Privacy');
 });
 

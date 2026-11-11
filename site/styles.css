@@ -73,7 +73,6 @@ button, .button {
   cursor: pointer;
 }
 button[disabled] { opacity: 0.45; cursor: not-allowed; }
-button.secondary { background: transparent; color: var(--accent); }
 
 input[type="url"], input[type="text"] {
   font: inherit;
@@ -141,22 +140,7 @@ output { color: var(--accent); }
 ol.steps { padding-left: 1.4rem; }
 ol.steps li { margin-bottom: 0.5rem; }
 
-.command {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-  margin: 0 0 8px;
-}
-.command code {
-  flex: 1;
-  min-width: 0;
-  padding: 0.45rem 0.6rem;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  overflow-x: auto;
-  white-space: pre;
-}
+.cli-pointer { margin: 2.2rem 0 0; }
 
 /* About tabs. Without JS the tab list stays hidden and every panel shows with its own heading. */
 .tabs { margin-top: 2.2rem; }

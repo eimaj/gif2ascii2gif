@@ -437,20 +437,6 @@ selectTab(tabForHash(location.hash) ?? tabs[0]);
 tabsRoot.classList.add('enhanced');
 tablist.hidden = false;
 
-for (const button of document.querySelectorAll('button[data-copy]')) {
-  button.addEventListener('click', async () => {
-    const text = $(button.dataset.copy).textContent;
-    try {
-      await navigator.clipboard.writeText(text);
-      button.textContent = 'Copied';
-    } catch (err) {
-      console.error(err);
-      button.textContent = 'Copy failed';
-    }
-    setTimeout(() => { button.textContent = 'Copy'; }, 1500);
-  });
-}
-
 // ---- Usage events ------------------------------------------------------------------------
 
 // Fire and forget: never awaited, and a failure never reaches the visitor.
