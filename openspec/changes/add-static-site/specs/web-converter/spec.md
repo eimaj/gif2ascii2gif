@@ -128,7 +128,7 @@ The page SHALL offer downloads of the animated GIF (looping, current settings) a
 - **THEN** the file is `dance-dancing.mjs` and running it with Node plays the animation
 
 ### Requirement: Page content
-Below the converter the page SHALL show, in order: an accessible tab set with the tabs "How it works" (three steps, selected by default), "Privacy" (the privacy note), and "Credits" ("Credits and licenses"); CLI usage with copyable commands; and a footer linking the GitHub repository. Each tab SHALL be deep-linkable by URL hash, and without JavaScript every panel SHALL stay readable.
+Below the converter the page SHALL show, in order: an accessible tab set with the tabs "How it works" (three steps, selected by default), "Privacy" (the privacy note), and "Credits" ("Credits and licenses"); a line pointing to the GitHub repository for the command-line version; and a footer linking the GitHub repository. Each tab SHALL be deep-linkable by URL hash, and without JavaScript every panel SHALL stay readable.
 
 #### Scenario: Default tab
 - **WHEN** a visitor opens the page without a tab hash
@@ -146,9 +146,9 @@ Below the converter the page SHALL show, in order: an accessible tab set with th
 - **WHEN** JavaScript is unavailable
 - **THEN** all three panels are shown with their headings and the tab list is hidden
 
-#### Scenario: Copy CLI command
-- **WHEN** a visitor activates the copy control on a CLI command
-- **THEN** the exact command text is on their clipboard
+#### Scenario: Command-line link
+- **WHEN** a visitor follows the command-line link
+- **THEN** they reach the repository README at `https://github.com/eimaj/gif2ascii2gif#readme`
 
 ### Requirement: Dependency transparency
 "Credits and licenses" SHALL list every third-party library the site ships, each with its name, pinned version, project link, license name, a link to the license file served from the site, and what the site uses it for. It SHALL also credit ffmpeg as the CLI's dependency.

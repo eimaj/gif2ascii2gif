@@ -19,7 +19,7 @@ gif2ascii only runs as a CLI that needs Node and ffmpeg, so sharing it means ask
 ### New Capabilities
 
 - `ascii-conversion`: How a GIF's frames become colored ASCII frames and back into pixels: background detection and removal, character selection, ANSI frame output, glyph rendering, and the standalone player format. Shared by the CLI and the site.
-- `web-converter`: The browser converter: inputs, controls, live preview, size limits, exports, and the page's content (how it works, CLI usage, credits and licenses, privacy note).
+- `web-converter`: The browser converter: inputs, controls, live preview, size limits, exports, and the page's content (how it works, a pointer to the repo for the command line, credits and licenses, privacy note).
 - `usage-events`: Anonymous usage counting: which events are recorded, which fields they may carry, and how the endpoint rejects abuse.
 
 ### Modified Capabilities
