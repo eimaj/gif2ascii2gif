@@ -47,19 +47,21 @@ export function gridBounds(grids) {
   };
 }
 
-// One RGBA frame. Each glyph pixel becomes a `scale × scale` block (nearest neighbor).
-export function renderFrameRGBA(grid, cols, rows, { background = 'transparent', scale = 1 } = {}) {
+// One RGBA frame with `margin` empty cells on every side. Each glyph pixel becomes a
+// `scale × scale` block (nearest neighbor).
+export function renderFrameRGBA(grid, cols, rows, { background = 'transparent', scale = 1, margin = MARGIN } = {}) {
   if (!Number.isInteger(scale) || scale < 1 || scale > MAX_SCALE) throw new Error(`scale must be an integer 1-${MAX_SCALE}, got ${scale}`);
+  if (!Number.isInteger(margin) || margin < 0) throw new Error(`margin must be a whole number of cells, got ${margin}`);
   const bg = parseBackground(background);
-  const width = (cols + 2 * MARGIN) * CELL_W * scale;
-  const height = (rows + 2 * MARGIN) * CELL_H * scale;
+  const width = (cols + 2 * margin) * CELL_W * scale;
+  const height = (rows + 2 * margin) * CELL_H * scale;
   const data = new Uint8Array(width * height * 4);
   if (bg[3] !== 0) for (let p = 0; p < width * height; p++) data.set(bg, p * 4);
   grid.forEach((cells, row) => {
     cells.forEach(({ ch, rgb }, col) => {
       const glyph = GLYPHS[ch];
-      const x0 = (col + MARGIN) * CELL_W;
-      const y0 = (row + MARGIN) * CELL_H;
+      const x0 = (col + margin) * CELL_W;
+      const y0 = (row + margin) * CELL_H;
       for (const [gy, bits] of Object.entries(glyph)) {
         for (let gx = 0; gx < CELL_W; gx++) {
           if (bits[gx] !== '#') continue;

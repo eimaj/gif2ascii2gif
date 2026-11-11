@@ -197,7 +197,7 @@ export function flattenOnWhite(rgba) {
 }
 
 // Per-axis area weights: for each output index, the source indices it covers and their overlap.
-function axisWeights(src, dst) {
+export function axisWeights(src, dst) {
   const scale = src / dst;
   const out = [];
   for (let o = 0; o < dst; o++) {
