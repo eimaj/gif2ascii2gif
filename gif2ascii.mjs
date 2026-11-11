@@ -39,7 +39,12 @@ function parseArgs(argv) {
 // The GIF's bytes, downloaded for an http(s) URL and read from disk for a file: URL or a path.
 async function readInput(input) {
   if (/^https?:\/\//i.test(input)) {
-    const res = await fetch(input);
+    let res;
+    try {
+      res = await fetch(input);
+    } catch (err) {
+      throw new Error(`download failed: ${err.cause?.message ?? err.message} for ${input}`, { cause: err });
+    }
     if (!res.ok) throw new Error(`download failed: HTTP ${res.status} for ${input}`);
     return new Uint8Array(await res.arrayBuffer());
   }

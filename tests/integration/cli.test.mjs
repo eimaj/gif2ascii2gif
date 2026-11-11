@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULT_WIDTH, DEFAULT_BG_THRESHOLD } from '../../site/lib/core.mjs';
@@ -113,6 +114,18 @@ test('CLI: a file: URL is read as the file it names', () => {
   const r = spawnSync('node', [join(ROOT, 'gif2ascii.mjs'), pathToFileURL(gif).href, '-o', join(dir, 'out.mjs')], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(parsePlayer(readFileSync(join(dir, 'out.mjs'), 'utf8')).frames.length, 1);
+});
+
+test('CLI: a network failure names the URL and the cause', async () => {
+  // A loopback port that was just free: the connection is refused without leaving the machine.
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  await new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  const url = `http://127.0.0.1:${port}/x.gif`;
+  const r = spawnSync('node', [join(ROOT, 'gif2ascii.mjs'), url, '-o', join(tempDir(), 'out.mjs')], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.equal(r.stderr, `gif2ascii: download failed: connect ECONNREFUSED 127.0.0.1:${port} for ${url}\n`);
 });
 
 test('CLI: a plain-text extension is accepted, as on the site', () => {
