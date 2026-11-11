@@ -75,23 +75,6 @@ Glyphs are built in for the character ramp, so it needs no fonts or extra packag
 - Background removal assumes a mostly solid background that touches the frame edges. Busy or gradient backgrounds won't blank cleanly; use `--keep-bg` for those.
 - Player files are large (about 1 MB for 17 frames at 80 columns) because every character carries a color code.
 
-## In the browser
-
-`site/` is a static site that does both directions client-side: load a GIF by file, drag-and-drop, URL, or the demo button, adjust every option with live controls, watch the preview, and download the transparent GIF or the standalone player. Nothing is uploaded. GIFs over 300 frames, 1,264 blocks (frames plus extensions such as comments), 20 MB, 1024 pixels on a side, or 50 megapixels in all (frames × width × height), with a frame that extends past the GIF's screen, or more than 5 times taller than wide are refused so the tab stays responsive.
-
-The site exports the GIF at exactly the source GIF's width and height, while the CLI's `ascii2gif.mjs` uses `--scale`, because a player file does not record the source size.
-
-Run it locally with no build step:
-
-```bash
-npm run serve
-# serving .../site at http://127.0.0.1:4173
-```
-
-The local server applies `site/_headers` (the same security headers the host serves). There is no Functions runtime locally, so `/api/event` returns 404, which the page ignores.
-
-`functions/api/event.js` is a Cloudflare Pages Function that counts anonymous usage events (`convert`, `export_gif`, `export_player`, `blocked_too_large`) with only coarse, enumerated fields. Its only Cloudflare coupling is the Analytics Engine binding name `EVENTS`; all deploy configuration lives outside this repo.
-
 ## Layout
 
 - `site/lib/` is the shared conversion core, imported by both CLI scripts and the site, so they cannot drift: `core.mjs` (ramp, frame sizing, background detection, character picking, ANSI frames), `glyphs.mjs` (6x12 bitmaps), `render.mjs` (ANSI frames back to RGBA), `player.mjs` (the player template), `scan.mjs` (a copy-free walk of the GIF's block structure, used for the site's limits and for both paths' frame delays), `decode.mjs` (browser GIF decoding and resampling), `export.mjs` (fitting the browser GIF export to the source size), `fetch.mjs` (fetching a GIF by URL with a time and size limit), and `events.mjs` (the usage event schema and privacy note).
