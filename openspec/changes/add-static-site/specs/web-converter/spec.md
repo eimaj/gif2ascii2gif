@@ -43,18 +43,22 @@ The page SHALL refuse, without converting, a GIF with more than 300 frames or a 
 - **THEN** no conversion runs and the page says the GIF has 450 frames, the limit is 300, and why
 
 ### Requirement: Pixel limits
-The page SHALL refuse, without converting and with the same kind of message as the size limits, a GIF whose declared screen is wider or taller than 4096 pixels, any of whose frame rectangles extends past the screen, that has more than 50 megapixels across all frames (frames × screen area), or whose screen is more than 5 times taller than it is wide. These limits SHALL be checked from the GIF's header before any frame is decompressed.
+The page SHALL refuse, without converting and with the same kind of message as the size limits, a GIF whose declared screen is wider or taller than 1024 pixels, any of whose frame rectangles extends past the screen, that has more than 50 megapixels across all frames (frames × screen area), or whose screen is more than 5 times taller than it is wide. They SHALL be checked from the header before any frame is decompressed; a refused screen size SHALL come with a resize hint.
 
 #### Scenario: Tiny file declaring a huge image
 - **WHEN** a visitor loads a GIF under 100 bytes whose header declares a 60000×60000 screen
-- **THEN** no frame is decompressed and the page says the GIF is 60000×60000 pixels, the limit is 4096×4096, and why
+- **THEN** no frame is decompressed and the page says the GIF is 60000×60000 pixels, the limit is 1024×1024, and why
+
+#### Scenario: Full HD GIF
+- **WHEN** a visitor loads a 1920×1080 GIF
+- **THEN** no conversion runs and the page says the GIF is 1920×1080 pixels, the limit is 1024×1024, and suggests resizing it
 
 #### Scenario: Frame outside the screen
 - **WHEN** a visitor loads a GIF with a 16×16 screen and an 8×8 frame at 40,40
 - **THEN** no conversion runs and the page says which frame extends past the screen, the screen size, and why
 
 #### Scenario: Very tall, narrow GIF
-- **WHEN** a visitor loads a 10×2000 GIF
+- **WHEN** a visitor loads a 5×1000 GIF
 - **THEN** no conversion runs and the page says the GIF is 200 times taller than it is wide, the limit is 5, and why
 
 ### Requirement: Compression header check
@@ -65,21 +69,33 @@ The page SHALL refuse, as not a readable GIF and before any frame is decompresse
 - **THEN** no frame is decompressed and the page says the file is not a readable GIF and keeps the previous result
 
 ### Requirement: Controls
-The page SHALL expose width (8–160 columns, default 40), background threshold (0–179, default 40), keep background (default off), export scale (1–8, default 2), and export background (transparent by default, or a hex color). Changing any control SHALL update the preview without reloading the GIF.
+The page SHALL expose width (8–160 columns, default 40), background threshold (0–179, default 40), keep background (default off), and export background (transparent by default, or a hex color). It SHALL NOT offer an export scale: the GIF export's size is the source GIF's size. Changing any control SHALL update the preview without reloading the GIF.
 
 #### Scenario: Width change
 - **WHEN** a visitor changes width from 40 to 60
 - **THEN** the preview re-renders at 60 columns within the same session
+
+#### Scenario: No scale control
+- **WHEN** a visitor opens the settings
+- **THEN** there is no export scale control
 
 ### Requirement: Live preview
 The page SHALL play the converted frames in a looping canvas at the source frame rate, drawn with the same glyphs and settings as the GIF export, over a checkerboard when the export background is transparent.
 
 #### Scenario: Preview matches export
 - **WHEN** a visitor exports the GIF with the current settings
-- **THEN** each exported frame matches the corresponding preview frame pixel for pixel
+- **THEN** each exported frame equals the corresponding preview frame, without its one-cell margin, area-resampled to the source GIF's width and height
 
 ### Requirement: Exports
-The page SHALL offer downloads of the animated GIF (looping, current settings) and the standalone terminal player (`<name>.mjs`), named after the source GIF.
+The page SHALL offer downloads of the animated GIF (looping, current settings) and the standalone terminal player (`<name>.mjs`), named after the source GIF. The GIF SHALL be exactly the source GIF's width and height, its glyphs drawn without a margin and area-resampled to that size with transparency cut at 50% alpha. When the grid is wider than the source at 6 pixels per character, the page SHALL note near the export button that characters may not be readable.
+
+#### Scenario: Export at source size
+- **WHEN** a visitor exports the 220×366 demo GIF at any width
+- **THEN** the downloaded GIF is 220×366 pixels
+
+#### Scenario: Narrow characters
+- **WHEN** a visitor sets 160 columns for a 220-pixel-wide GIF
+- **THEN** a note near the export button says characters are smaller than 6 pixels and may not be readable
 
 #### Scenario: Download player
 - **WHEN** a visitor downloads the player for `dance-dancing.gif`
