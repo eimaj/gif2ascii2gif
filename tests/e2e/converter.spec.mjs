@@ -80,6 +80,9 @@ test('both downloads are named after the source and the GIF has every frame', as
   const info = probeGif(saved);
   expect(info.frames).toBe(8);
   expect([info.width, info.height]).toEqual([80, 60]); // the fixture's own size
+  const alpha = firstFrameAlpha(saved); // default background is transparent
+  expect(alpha).toContain(0);
+  expect(alpha).toContain(255);
 });
 
 test('the GIF export has exactly the source GIF\'s dimensions at every width', async ({ page }) => {
