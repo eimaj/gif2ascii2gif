@@ -3,25 +3,13 @@
 // Usage: node ascii2gif.mjs <player.mjs> [--scale 2] [--bg transparent|RRGGBB] [-o out.gif]
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { MAX_SCALE, parseBackground, renderFrames } from './site/lib/render.mjs';
+import { parsePlayer } from './site/lib/player.mjs';
+
+// A usage or option error, printed as is; any other error is printed after "couldn't convert this GIF".
+class CliError extends Error {}
 
 const USAGE = 'usage: node ascii2gif.mjs <player.mjs> [--scale 2] [--bg transparent|RRGGBB] [-o out.gif]';
-const CELL_W = 6;
-const CELL_H = 12;
-const MARGIN = 1; // in cells
-
-// 6x12 bitmap glyphs for the gif2ascii character ramp. '#' = lit pixel; unlisted rows are blank.
-const GLYPHS = {
-  ' ': {},
-  '.': { 9: '.##...', 10: '.##...' },
-  ':': { 3: '.##...', 4: '.##...', 9: '.##...', 10: '.##...' },
-  '-': { 6: '#####.' },
-  '=': { 4: '#####.', 8: '#####.' },
-  '+': { 3: '..#...', 4: '..#...', 5: '..#...', 6: '#####.', 7: '..#...', 8: '..#...', 9: '..#...' },
-  '*': { 3: '..#...', 4: '#.#.#.', 5: '.###..', 6: '#.#.#.', 7: '..#...' },
-  '#': { 2: '.#.#..', 3: '.#.#..', 4: '#####.', 5: '.#.#..', 6: '.#.#..', 7: '#####.', 8: '.#.#..', 9: '.#.#..' },
-  '%': { 2: '##..#.', 3: '##..#.', 4: '...#..', 5: '..#...', 6: '..#...', 7: '.#....', 8: '#..##.', 9: '#..##.' },
-  '@': { 2: '.###..', 3: '#...#.', 4: '#.###.', 5: '#.#.#.', 6: '#.#.#.', 7: '#.###.', 8: '#.....', 9: '.####.' },
-};
 
 function parseArgs(argv) {
   const opts = { input: null, out: null, scale: 2, bg: 'transparent' };
@@ -30,81 +18,36 @@ function parseArgs(argv) {
     if (a === '--scale') opts.scale = Number(argv[++i]);
     else if (a === '--bg') opts.bg = String(argv[++i]).replace(/^#/, '');
     else if (a === '-o') opts.out = argv[++i];
-    else if (a.startsWith('-')) throw new Error(`unknown flag: ${a}`);
+    else if (a.startsWith('-')) throw new CliError(`unknown flag: ${a}`);
     else opts.input = a;
   }
-  if (!opts.input) throw new Error(USAGE);
-  if (!Number.isInteger(opts.scale) || opts.scale < 1 || opts.scale > 8) throw new Error(`--scale must be an integer 1-8, got ${opts.scale}`);
-  if (opts.bg !== 'transparent' && !/^[0-9a-fA-F]{6}$/.test(opts.bg)) {
-    throw new Error(`--bg must be "transparent" or a 6-digit hex color, got ${opts.bg}`);
+  if (!opts.input) throw new CliError(USAGE);
+  if (!Number.isInteger(opts.scale) || opts.scale < 1 || opts.scale > MAX_SCALE) {
+    throw new CliError(`--scale must be an integer 1-${MAX_SCALE}, got ${opts.scale}`);
+  }
+  try {
+    parseBackground(opts.bg);
+  } catch (err) {
+    throw new CliError(`--bg: ${err.message}`, { cause: err });
   }
   return opts;
 }
 
 function loadPlayer(path) {
-  const src = readFileSync(path, 'utf8');
-  const frames = src.match(/^const FRAMES = (.*);$/m);
-  const delay = src.match(/^const DELAY_MS = (\d+);$/m);
-  if (!frames || !delay) throw new Error(`${path} does not look like a gif2ascii player (FRAMES/DELAY_MS not found)`);
-  return { frames: JSON.parse(frames[1]), delayMs: Number(delay[1]) };
-}
-
-// Turn one ANSI frame into a grid of { ch, rgb } cells.
-function parseFrame(text) {
-  const rows = [];
-  for (const line of text.split('\n')) {
-    const cells = [];
-    let rgb = [255, 255, 255];
-    for (let i = 0; i < line.length; i++) {
-      if (line[i] === '\x1b') {
-        const end = line.indexOf('m', i);
-        if (end === -1) throw new Error('unterminated escape sequence in frame');
-        const params = line.slice(i + 2, end).split(';').map(Number);
-        if (params[0] === 38 && params[1] === 2) rgb = params.slice(2, 5);
-        else if (params[0] === 0) rgb = [255, 255, 255];
-        i = end;
-        continue;
-      }
-      const ch = line[i];
-      if (!(ch in GLYPHS)) throw new Error(`no glyph for character ${JSON.stringify(ch)}`);
-      cells.push({ ch, rgb });
-    }
-    rows.push(cells);
+  try {
+    return parsePlayer(readFileSync(path, 'utf8'));
+  } catch (err) {
+    throw new Error(`${path}: ${err.message}`, { cause: err });
   }
-  return rows;
-}
-
-// RGBA frame; bg is [r, g, b, a] — a = 0 for a transparent background.
-function renderFrame(grid, cols, rowsCount, bg) {
-  const w = (cols + 2 * MARGIN) * CELL_W;
-  const h = (rowsCount + 2 * MARGIN) * CELL_H;
-  const buf = Buffer.alloc(w * h * 4);
-  for (let p = 0; p < w * h; p++) buf.set(bg, p * 4);
-  grid.forEach((cells, row) => {
-    cells.forEach(({ ch, rgb }, col) => {
-      const glyph = GLYPHS[ch];
-      const x0 = (col + MARGIN) * CELL_W;
-      const y0 = (row + MARGIN) * CELL_H;
-      for (const [gy, bits] of Object.entries(glyph)) {
-        for (let gx = 0; gx < CELL_W; gx++) {
-          if (bits[gx] === '#') buf.set([...rgb, 255], ((y0 + Number(gy)) * w + x0 + gx) * 4);
-        }
-      }
-    });
-  });
-  return { buf, w, h };
 }
 
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   const { frames, delayMs } = loadPlayer(opts.input);
   const transparent = opts.bg === 'transparent';
-  const bg = transparent ? [0, 0, 0, 0] : [...[0, 2, 4].map((i) => parseInt(opts.bg.slice(i, i + 2), 16)), 255];
-  const grids = frames.map(parseFrame);
-  const cols = Math.max(...grids.flatMap((g) => g.map((r) => r.length)));
-  const rowsCount = Math.max(...grids.map((g) => g.length));
-  const rendered = grids.map((g) => renderFrame(g, cols, rowsCount, bg));
-  const { w, h } = rendered[0];
+  // Rendered at scale 1; ffmpeg scales with nearest neighbor below.
+  const rendered = renderFrames(frames, { background: opts.bg, scale: 1 });
+  const { width: w, height: h } = rendered[0];
   const out = opts.out ?? opts.input.replace(/\.m?js$/, '') + '.gif';
   const fps = 1000 / delayMs;
 
@@ -118,7 +61,7 @@ function main() {
     // Each frame redraws fully; skip the inter-frame transparency diff so moving parts don't leave trails.
     ...(transparent ? ['-gifflags', '-transdiff'] : []),
     '-loop', '0', out,
-  ], { input: Buffer.concat(rendered.map((r) => r.buf)), maxBuffer: 1 << 30 });
+  ], { input: Buffer.concat(rendered.map((r) => r.data)), maxBuffer: 1 << 30 });
   if (ff.error) throw ff.error;
   if (ff.status !== 0) throw new Error(`ffmpeg exited ${ff.status}: ${ff.stderr.toString().trim()}`);
 
@@ -128,6 +71,6 @@ function main() {
 try {
   main();
 } catch (err) {
-  console.error(`ascii2gif: ${err.message}`);
+  console.error(err instanceof CliError ? `ascii2gif: ${err.message}` : `ascii2gif: couldn't convert this GIF: ${err.message}`);
   process.exit(1);
 }

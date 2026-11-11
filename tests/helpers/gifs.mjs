@@ -1,0 +1,137 @@
+// GIFs built in memory with gifenc, and header rewrites that declare sizes the data does not have.
+import { GIFEncoder } from '../../site/vendor/gifenc/gifenc.esm.js';
+
+export const RED = [255, 0, 0], BLUE = [0, 0, 255], GREEN = [0, 255, 0], WHITE = [255, 255, 255];
+
+// Write a GIF with explicit per-frame palettes, index data, delay (ms), disposal, and transparency.
+export function encode(frames) {
+  const enc = GIFEncoder();
+  for (const f of frames) {
+    enc.writeFrame(new Uint8Array(f.index), f.w, f.h, {
+      palette: f.palette, delay: f.delay ?? 100, dispose: f.dispose ?? 1,
+      ...(f.transparentIndex != null ? { transparent: true, transparentIndex: f.transparentIndex } : {}),
+    });
+  }
+  enc.finish();
+  return enc.bytes();
+}
+
+// Bytes in the color table that a packed-fields byte declares (0 when it has none).
+const colorTableSize = (flags) => (flags & 0x80 ? 3 * (1 << ((flags & 7) + 1)) : 0);
+
+// Byte offset of every image descriptor (0x2C), found by walking the GIF's blocks.
+export function imageDescriptorOffsets(bytes) {
+  const skipSubBlocks = (p) => { while (bytes[p]) p += bytes[p] + 1; return p + 1; };
+  const out = [];
+  let p = 13 + colorTableSize(bytes[10]);
+  while (p < bytes.length && bytes[p] !== 0x3b) {
+    if (bytes[p] === 0x21) {
+      p = skipSubBlocks(p + 2);
+    } else if (bytes[p] === 0x2c) {
+      out.push(p);
+      p = skipSubBlocks(p + 10 + colorTableSize(bytes[p + 9]) + 1); // + 1 skips the LZW minimum code size
+    } else {
+      throw new Error(`unexpected GIF block 0x${bytes[p].toString(16)} at byte ${p}`);
+    }
+  }
+  return out;
+}
+
+// Byte offset of the LZW minimum code size of the frame whose descriptor is at `d` (default: the first).
+export function codeSizeOffset(bytes, d = imageDescriptorOffsets(bytes)[0]) {
+  return d + 10 + colorTableSize(bytes[d + 9]);
+}
+
+// `count` 1×1 frames whose header is rewritten to declare `screen` [w, h], and for every frame a
+// rectangle `frame` [w, h] at `at` [left, top], optionally interlaced, and an LZW minimum code size
+// `codeSize`. Nothing else in the file grows.
+export function declaring({ screen, frame, at, interlaced = false, codeSize, count = 1 }) {
+  const bytes = encode(Array(count).fill({ w: 1, h: 1, palette: [RED, BLUE], index: [0] }));
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+  if (screen) { view.setUint16(6, screen[0], true); view.setUint16(8, screen[1], true); }
+  for (const d of imageDescriptorOffsets(bytes)) {
+    if (at) { view.setUint16(d + 1, at[0], true); view.setUint16(d + 3, at[1], true); }
+    if (frame) { view.setUint16(d + 5, frame[0], true); view.setUint16(d + 7, frame[1], true); }
+    if (interlaced) bytes[d + 9] |= 0x40;
+    if (codeSize != null) bytes[codeSizeOffset(bytes, d)] = codeSize;
+  }
+  return bytes;
+}
+
+// `bytes` with `count` copies of the extension `ext` (default: an empty comment, 21 FE 00) inserted
+// before the first block, after the header and global color table.
+export function withExtensions(bytes, count, ext = [0x21, 0xfe, 0x00]) {
+  const at = 13 + colorTableSize(bytes[10]);
+  const out = new Uint8Array(bytes.length + count * ext.length);
+  out.set(bytes.subarray(0, at), 0);
+  for (let i = 0, p = at; i < count; i++) for (const b of ext) out[p++] = b;
+  out.set(bytes.subarray(at), at + count * ext.length);
+  return out;
+}
+
+// Whole extension blocks: a 2-byte comment, a loop-count application extension, and an ICC-style one.
+const ascii = (s) => [...new TextEncoder().encode(s)];
+export const COMMENT = [0x21, 0xfe, 0x02, ...ascii('hi'), 0x00];
+export const NETSCAPE = [0x21, 0xff, 0x0b, ...ascii('NETSCAPE2.0'), 0x03, 0x01, 0x00, 0x00, 0x00];
+export const ICC = [0x21, 0xff, 0x0b, ...ascii('ICCRGBG1012'), 0x04, 1, 2, 3, 4, 0x00];
+// A plain-text extension: a 12-byte text grid header (position, size, cell size, colors), then the text.
+export const PLAIN_TEXT = [0x21, 0x01, 0x0c, 0, 0, 0, 0, 8, 0, 8, 0, 8, 8, 1, 0, 0x02, ...ascii('hi'), 0x00];
+
+// `bytes` with the extension blocks `exts` inserted right before frame `frame`'s image descriptor
+// (0-based), so after that frame's graphic control extension.
+export function beforeImage(bytes, frame, ...exts) {
+  const at = imageDescriptorOffsets(bytes)[frame];
+  const ext = exts.flat();
+  const out = new Uint8Array(bytes.length + ext.length);
+  out.set(bytes.subarray(0, at), 0);
+  out.set(ext, at);
+  out.set(bytes.subarray(at), at + ext.length);
+  return out;
+}
+
+// `bytes` with the graphic control extension removed from each frame listed in `frames` (0-based),
+// so those frames carry no delay. gifenc writes an 8-byte one right before every image descriptor.
+export function withoutGce(bytes, frames) {
+  const cut = imageDescriptorOffsets(bytes).filter((_, i) => frames.includes(i)).map((d) => d - 8);
+  for (const p of cut) {
+    if (bytes[p] !== 0x21 || bytes[p + 1] !== 0xf9) throw new Error(`no graphic control extension at byte ${p}`);
+  }
+  const out = new Uint8Array(bytes.length - 8 * cut.length);
+  let from = 0, to = 0;
+  for (const p of cut) { out.set(bytes.subarray(from, p), to); to += p - from; from = p + 8; }
+  out.set(bytes.subarray(from), to);
+  return out;
+}
+
+// A one-frame 1×1 GIF with a chain of `count` one-byte sub-blocks, the shape no encoder writes:
+// 'comment' and 'application' (an XMP-style application extension) add the chain as an extension
+// before the frame; 'image' splits the frame's own LZW data into one-byte sub-blocks, padded with
+// zero bytes after the end code to `count` sub-blocks.
+export function withSubBlockFlood(kind, count) {
+  const bytes = encode([{ w: 1, h: 1, palette: [RED, BLUE], index: [0] }]);
+  const chain = (data) => {
+    const out = new Uint8Array(2 * data.length + 1);
+    data.forEach((b, i) => { out[2 * i] = 1; out[2 * i + 1] = b; });
+    return out; // the final 0 is the terminator
+  };
+  const join = (...parts) => {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) { out.set(p, at); at += p.length; }
+    return out;
+  };
+  const filler = new Uint8Array(count).fill(0x78);
+  if (kind === 'comment' || kind === 'application') {
+    const at = 13 + colorTableSize(bytes[10]);
+    const head = kind === 'comment' ? [0x21, 0xfe] : [0x21, 0xff, 0x0b, ...new TextEncoder().encode('XMP DataXMP')];
+    return join(bytes.subarray(0, at), new Uint8Array(head), chain(filler), bytes.subarray(at));
+  }
+  if (kind !== 'image') throw new Error(`unknown flood kind ${kind}`);
+  const start = codeSizeOffset(bytes) + 1;
+  const lzw = [];
+  let p = start;
+  for (; bytes[p]; p += bytes[p] + 1) lzw.push(...bytes.subarray(p + 1, p + 1 + bytes[p]));
+  const data = new Uint8Array(Math.max(count, lzw.length));
+  data.set(lzw);
+  return join(bytes.subarray(0, start), chain(data), bytes.subarray(p + 1));
+}

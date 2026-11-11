@@ -1,0 +1,273 @@
+// Browser-side GIF decoding: size limits, disposal-aware compositing, area resampling, frame rate.
+// Standard JS only, so it also runs under Node for tests.
+import { parseGIF, decompressFrame } from '../vendor/gifuct-js/gifuct.bundle.mjs';
+import { frameDelay } from './core.mjs';
+import { scanGif, MalformedGifError } from './scan.mjs';
+
+export const MAX_FRAMES = 300;
+// Blocks: image descriptors plus extensions (graphic control, comment, application, plain text).
+// The decoder builds an object per block, so a file of millions of 3-byte comments would cost
+// gigabytes. A frame usually takes 2 blocks (graphic control + image); 4 per frame leaves room for a
+// per-frame comment or application extension, and 64 more cover file-level ones (loop count, XMP, ICC).
+export const MAX_BLOCKS = 4 * MAX_FRAMES + 64;
+export const MAX_BYTES = 20 * 1024 * 1024;
+export const MAX_SIDE = 1024; // pixels per side of the GIF's screen; every frame must fit inside the screen
+// Frames × screen area. Decoding keeps one RGB copy of the screen per frame (3 B/px, so 150 MB at
+// this limit) and one RGBA canvas. Frames are decompressed one at a time; gifuct-js holds each
+// frame's pixels at about 12 B/px (20 B/px interlaced) until that frame is composited.
+export const MAX_TOTAL_PIXELS = 50_000_000;
+// Height ÷ width. At the widest setting (MAX_WIDTH, 160 columns) this caps the preview at
+// MAX_ASPECT × MAX_WIDTH × CHAR_ASPECT = 400 rows; a unit test pins that product.
+export const MAX_ASPECT = 5;
+
+const count = (n) => n.toLocaleString('en-US');
+const LIMIT_MESSAGES = {
+  frames: (actual, limit) => `This GIF has ${actual} frames; the limit is ${limit}.`,
+  blocks: (actual, limit) => `This GIF has ${count(actual)} blocks (frames plus extensions such as comments); the limit is ${count(limit)}.`,
+  bytes: (actual, limit) => `This file is ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
+  download: (actual, limit) => `The download was stopped after ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
+  pixels: (actual, limit) => `This GIF is ${actual.width}×${actual.height} pixels; the limit is ${limit}×${limit}. Resize it to at most ${limit} pixels on each side and try again.`,
+  bounds: (actual, limit) => `A ${actual.width}×${actual.height} frame of this GIF at ${actual.left},${actual.top} extends past its ${limit.width}×${limit.height} screen; every frame must fit inside the screen.`,
+  total: (actual, limit) => `This GIF has ${count(actual)} pixels across all its frames (frames × width × height); the limit is ${count(limit)}.`,
+  // Rounded up, so a GIF just over the limit never reads as equal to it.
+  aspect: (actual, limit) => `This GIF is ${(Math.ceil(actual * 10 - 1e-9) / 10).toFixed(1)} times taller than it is wide; the limit is ${limit}.`,
+};
+
+// Thrown when a GIF would take too much work to convert in a browser tab.
+export class LimitError extends Error {
+  constructor(kind, limit, actual) {
+    super(LIMIT_MESSAGES[kind](actual, limit));
+    this.name = 'LimitError';
+    // 'frames' | 'blocks' | 'bytes' | 'download' | 'total' | 'aspect': numbers.
+    // 'pixels': limit is MAX_SIDE, actual the screen { width, height }.
+    // 'bounds': limit is the screen { width, height }, actual the frame { left, top, width, height }.
+    this.kind = kind;
+    this.limit = limit;
+    this.actual = actual;
+  }
+}
+
+// Thrown when the input cannot be decoded as a GIF.
+export class NotAGifError extends Error {
+  constructor(detail, options) {
+    super(`Not a readable GIF${detail ? ` (${detail})` : ''}.`, options);
+    this.name = 'NotAGifError';
+    this.detail = detail; // the reason alone, for callers that word the message their own way
+  }
+}
+
+// Rounded up, so a size just over a limit never reads as equal to it.
+export function formatBytes(n) {
+  return n >= 1024 * 1024 ? `${(Math.ceil(n / (1024 * 1024) * 10) / 10).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`;
+}
+
+export function checkFileSize(bytes) {
+  if (bytes > MAX_BYTES) throw new LimitError('bytes', MAX_BYTES, bytes);
+}
+
+// Read a response body stream into an ArrayBuffer, stopping with a download LimitError once it
+// passes `limit` bytes, so a body with no (or a false) Content-Length cannot exhaust memory.
+export async function readCapped(body, limit = MAX_BYTES) {
+  const reader = body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > limit) {
+      await reader.cancel();
+      throw new LimitError('download', limit, total);
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { out.set(c, offset); offset += c.length; }
+  return out.buffer;
+}
+
+// The GIF format allows LZW minimum code sizes 2–8. The decompressor builds a 2^size-entry code
+// table before reading any data, so one header byte would otherwise set each frame's work and memory.
+export const MIN_CODE_SIZE = 2;
+export const MAX_CODE_SIZE = 8;
+
+// `scan` is a scanGif result (scan.mjs): the frames' LZW minimum code sizes.
+export function checkCodeSizes(scan) {
+  for (const { codeSize } of scan.frames) {
+    if (!(codeSize >= MIN_CODE_SIZE && codeSize <= MAX_CODE_SIZE)) {
+      throw new NotAGifError(`LZW minimum code size ${codeSize} is outside ${MIN_CODE_SIZE}–${MAX_CODE_SIZE}`);
+    }
+  }
+}
+
+// The GIF header can declare sizes far beyond its byte size; check them before any pixel buffer exists.
+// Every frame must fit inside the screen, so the screen also bounds each frame's own pixels, and the
+// CLI (whose ffmpeg drops a frame that lies wholly outside the screen) never sees a different frame count.
+// `scan` is a scanGif result (scan.mjs): the screen { width, height } and the frame rectangles.
+export function checkPixels(scan) {
+  const { width, height } = scan;
+  if (width > MAX_SIDE || height > MAX_SIDE) throw new LimitError('pixels', MAX_SIDE, { width, height });
+  for (const { left, top, width: fw, height: fh } of scan.frames) {
+    if (left + fw > width || top + fh > height) {
+      throw new LimitError('bounds', { width, height }, { left, top, width: fw, height: fh });
+    }
+  }
+  const total = scan.frames.length * width * height;
+  if (total > MAX_TOTAL_PIXELS) throw new LimitError('total', MAX_TOTAL_PIXELS, total);
+}
+
+// A copy of `bytes` as an ArrayBuffer, without the [start, end) `ranges` (sorted, not overlapping).
+// gifuct-js throws on a plain-text extension, which browsers ignore, so those are cut before parsing.
+function withoutRanges(bytes, ranges) {
+  const removed = ranges.reduce((n, [start, end]) => n + end - start, 0);
+  const out = new Uint8Array(bytes.length - removed);
+  let from = 0, to = 0;
+  for (const [start, end] of ranges) {
+    out.set(bytes.subarray(from, start), to);
+    to += start - from;
+    from = end;
+  }
+  out.set(bytes.subarray(from), to);
+  return out.buffer;
+}
+
+// Scan the block structure and check every limit, then parse, then composite every frame to full
+// size, flattened to RGB on white. Nothing is parsed into objects until the scan has passed.
+// Plain-text extensions are accepted and not drawn, as browsers do.
+export function decodeGif(buffer) {
+  const bytes = new Uint8Array(buffer);
+  checkFileSize(bytes.length);
+  let scan;
+  try {
+    scan = scanGif(bytes, { maxFrames: MAX_FRAMES, maxBlocks: MAX_BLOCKS });
+  } catch (err) {
+    if (err instanceof MalformedGifError) throw new NotAGifError(err.message, { cause: err });
+    throw err;
+  }
+  if (scan.frameCount > MAX_FRAMES) throw new LimitError('frames', MAX_FRAMES, scan.frameCount);
+  if (scan.blockCount > MAX_BLOCKS) throw new LimitError('blocks', MAX_BLOCKS, scan.blockCount);
+  if (scan.frameCount === 0) throw new NotAGifError('no frames');
+  const { width, height } = scan;
+  if (!width || !height) throw new NotAGifError('zero size');
+  checkCodeSizes(scan);
+  checkPixels(scan);
+  if (height / width > MAX_ASPECT) throw new LimitError('aspect', MAX_ASPECT, height / width);
+  let gif;
+  try {
+    gif = parseGIF(withoutRanges(bytes, scan.plainText));
+  } catch (err) {
+    throw new NotAGifError(err.message, { cause: err });
+  }
+  // The decoder stops at an extension it does not know, so it can see fewer frames than the scan.
+  const parsedFrames = gif.frames.filter((f) => f.image).length;
+  if (parsedFrames !== scan.frameCount) {
+    throw new NotAGifError(`the decoder read ${parsedFrames} of ${scan.frameCount} frames`);
+  }
+  // Decompress lazily, one frame per composite step, so only one frame's pixels are alive at a time.
+  // Each image gets its graphic control fields from the scan: gifuct-js groups at most one application
+  // and one comment extension with a frame, so with more between a graphic control extension and its
+  // image it puts that extension in a frame of its own and the image loses its transparency and disposal.
+  function* patches() {
+    let i = 0;
+    for (const f of gif.frames) {
+      if (!f.image) continue;
+      const { delayMs, disposal, transparentIndex } = scan.frames[i++];
+      const gce = { delay: delayMs / 10, extras: { disposal, transparentColorGiven: transparentIndex !== null }, transparentColorIndex: transparentIndex };
+      let patch;
+      try {
+        patch = decompressFrame({ image: f.image, gce }, gif.gct, true);
+      } catch (err) {
+        throw new NotAGifError(err.message, { cause: err });
+      }
+      yield patch;
+    }
+  }
+  const frames = compositeFrames(patches(), width, height);
+  // Delays come from the scan, which the CLI shares, so both apply one rule to frames without a GCE.
+  return { width, height, frames, delayMs: frameDelay(scan.frames.map((f) => f.delayMs)) };
+}
+
+// Draw each patch (from any iterable) onto a full-size RGBA canvas, honoring disposal:
+// 0/1 keep, 2 clear the patch area to transparent, 3 restore the canvas from before the patch.
+// Each frame is flattened to RGB on white as it is drawn, so only one RGBA canvas is ever alive.
+export function compositeFrames(patches, width, height) {
+  const canvas = new Uint8ClampedArray(width * height * 4);
+  const out = [];
+  for (const p of patches) {
+    const { top, left, width: pw, height: ph } = p.dims;
+    const before = p.disposalType === 3 ? canvas.slice() : null;
+    for (let y = 0; y < ph; y++) {
+      const cy = top + y;
+      if (cy < 0 || cy >= height) continue;
+      for (let x = 0; x < pw; x++) {
+        const cx = left + x;
+        if (cx < 0 || cx >= width) continue;
+        const s = (y * pw + x) * 4;
+        if (p.patch[s + 3] === 0) continue; // transparent pixel: keep what's underneath
+        const d = (cy * width + cx) * 4;
+        canvas[d] = p.patch[s]; canvas[d + 1] = p.patch[s + 1]; canvas[d + 2] = p.patch[s + 2]; canvas[d + 3] = 255;
+      }
+    }
+    out.push(flattenOnWhite(canvas));
+    if (p.disposalType === 2) {
+      for (let y = Math.max(0, top); y < Math.min(height, top + ph); y++) {
+        canvas.fill(0, (y * width + Math.max(0, left)) * 4, (y * width + Math.min(width, left + pw)) * 4);
+      }
+    } else if (before) {
+      canvas.set(before);
+    }
+  }
+  return out;
+}
+
+// RGBA → packed RGB, transparent pixels as white (the GIF's background).
+export function flattenOnWhite(rgba) {
+  const n = rgba.length / 4;
+  const rgb = new Uint8Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const a = rgba[i * 4 + 3] / 255;
+    for (let c = 0; c < 3; c++) rgb[i * 3 + c] = Math.round(rgba[i * 4 + c] * a + 255 * (1 - a));
+  }
+  return rgb;
+}
+
+// Per-axis area weights: for each output index, the source indices it covers and their overlap.
+export function axisWeights(src, dst) {
+  const scale = src / dst;
+  const out = [];
+  for (let o = 0; o < dst; o++) {
+    const start = o * scale;
+    const end = start + scale;
+    const taps = [];
+    for (let s = Math.floor(start); s < Math.min(src, Math.ceil(end)); s++) {
+      const w = Math.min(end, s + 1) - Math.max(start, s);
+      if (w > 0) taps.push([s, w]);
+    }
+    out.push(taps);
+  }
+  return out;
+}
+
+// Area-average (box filter) resample of packed RGB from srcW×srcH to w×h.
+export function resampleArea(rgb, srcW, srcH, w, h) {
+  const xs = axisWeights(srcW, w);
+  const ys = axisWeights(srcH, h);
+  const out = new Uint8Array(w * h * 3);
+  for (let oy = 0; oy < h; oy++) {
+    for (let ox = 0; ox < w; ox++) {
+      let r = 0, g = 0, b = 0, total = 0;
+      for (const [sy, wy] of ys[oy]) {
+        for (const [sx, wx] of xs[ox]) {
+          const wgt = wx * wy;
+          const i = (sy * srcW + sx) * 3;
+          r += rgb[i] * wgt; g += rgb[i + 1] * wgt; b += rgb[i + 2] * wgt;
+          total += wgt;
+        }
+      }
+      const o = (oy * w + ox) * 3;
+      out[o] = Math.round(r / total); out[o + 1] = Math.round(g / total); out[o + 2] = Math.round(b / total);
+    }
+  }
+  return out;
+}

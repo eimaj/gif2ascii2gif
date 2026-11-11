@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>gif2ascii</title>
+  <meta name="description" content="Turn a GIF into a colored-ASCII animation and back, right in your browser. Nothing is uploaded.">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="masthead">
+    <h1>gif2ascii</h1>
+    <p class="tagline">GIF → colored ASCII → GIF, in your browser. Nothing is uploaded.</p>
+    <p class="intro">Drop in any GIF and watch it redrawn frame by frame as colored text characters. Adjust the width and background, then download the result as a transparent GIF to share, or as a tiny script that plays the animation in your terminal.</p>
+  </header>
+
+  <main>
+    <section id="converter" aria-labelledby="converter-title">
+      <h2 id="converter-title" class="visually-hidden">Converter</h2>
+
+      <div id="dropzone" class="dropzone">
+        <p>Drop a GIF anywhere on the page, or</p>
+        <div class="inputs">
+          <label class="button" for="file">Choose a file<input id="file" type="file" accept="image/gif,.gif" class="visually-hidden"></label>
+          <button id="demo" type="button">Try the demo</button>
+        </div>
+        <form id="url-form" class="url-form">
+          <label for="url" class="visually-hidden">GIF URL</label>
+          <input id="url" type="url" placeholder="https://…/animation.gif" autocomplete="off" spellcheck="false">
+          <button type="submit">Convert URL</button>
+        </form>
+      </div>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+
+      <fieldset id="controls" class="controls">
+        <legend>Settings</legend>
+        <label for="width">Width <output id="width-out" for="width">40</output> columns</label>
+        <input id="width" type="range" min="8" max="160" step="1" value="40">
+
+        <label for="threshold">Background threshold <output id="threshold-out" for="threshold">40</output></label>
+        <input id="threshold" type="range" min="0" max="179" step="1" value="40">
+
+        <label class="check"><input id="keep-bg" type="checkbox"> Keep background</label>
+
+        <label class="check"><input id="transparent" type="checkbox" checked> Transparent export background</label>
+        <label for="bg-color">Export background color</label>
+        <input id="bg-color" type="color" value="#000000" disabled>
+      </fieldset>
+
+      <figure class="preview">
+        <div id="stage" class="stage checker">
+          <canvas id="preview" width="0" height="0" aria-label="ASCII animation preview"></canvas>
+          <p id="placeholder" class="placeholder">No GIF loaded yet.</p>
+        </div>
+        <figcaption id="info" class="info"></figcaption>
+      </figure>
+
+      <div class="downloads">
+        <button id="download-gif" type="button" disabled>Download GIF</button>
+        <button id="download-player" type="button" disabled>Download player (.mjs)</button>
+      </div>
+      <p id="export-note" class="info" hidden>At this width, characters are smaller than 6 pixels in the exported GIF and may not be readable.</p>
+    </section>
+
+    <div id="about" class="tabs">
+      <div class="tablist" role="tablist" aria-label="About gif2ascii" hidden>
+        <button type="button" class="tab" role="tab" id="tab-how-it-works" aria-controls="how-it-works" aria-selected="true">How it works</button>
+        <button type="button" class="tab" role="tab" id="tab-privacy" aria-controls="privacy" aria-selected="false" tabindex="-1">Privacy</button>
+        <button type="button" class="tab" role="tab" id="tab-credits" aria-controls="credits" aria-selected="false" tabindex="-1">Credits</button>
+      </div>
+
+      <section id="how-it-works" class="tab-panel" role="tabpanel" aria-labelledby="tab-how-it-works" tabindex="0">
+        <h2>How it works</h2>
+        <ol class="steps">
+          <li><strong>Decode.</strong> Your browser reads the GIF, rebuilds every full frame, and shrinks it to the chosen width (each character cell is twice as tall as it is wide).</li>
+          <li><strong>Convert.</strong> The most common border color is treated as the background and dropped. Every other pixel becomes a character from <code>.:-=+*#%@</code>, denser the further it is from the background, in its own 24-bit color.</li>
+          <li><strong>Export.</strong> The preview and the GIF draw each character from the same 6×12 pixel font, and the GIF is resized to exactly the source GIF's width and height. The player is a single Node script that plays the frames in your terminal.</li>
+        </ol>
+      </section>
+
+      <section id="privacy" class="tab-panel privacy" role="tabpanel" aria-labelledby="tab-privacy" tabindex="0">
+        <h2>Privacy</h2>
+        <div id="privacy-note"></div>
+      </section>
+
+      <section id="credits" class="tab-panel" role="tabpanel" aria-labelledby="tab-credits" tabindex="0">
+        <h2>Credits and licenses</h2>
+        <p>This site ships these open-source libraries, unmodified, from its own server:</p>
+        <ul class="credits">
+          <li><a href="https://github.com/mattdesl/gifenc">gifenc</a> 1.0.3 by Matt DesLauriers. MIT License (<a href="vendor/gifenc/LICENSE">license text</a>). Used to encode the GIF you download.</li>
+          <li><a href="https://github.com/matt-way/gifuct-js">gifuct-js</a> 2.1.2 by Matt Way. MIT License (<a href="vendor/gifuct-js/LICENSE">license text</a>). Used to decode the GIF you load.</li>
+          <li><a href="https://github.com/matt-way/jsBinarySchemaParser">js-binary-schema-parser</a> 2.0.3 by Matt Way. MIT License (<a href="vendor/gifuct-js/LICENSE-js-binary-schema-parser">license text</a>). Bundled inside gifuct-js to read the GIF file format.</li>
+        </ul>
+        <p>The command-line scripts use <a href="https://ffmpeg.org/">FFmpeg</a> (LGPL/GPL, <a href="https://ffmpeg.org/legal.html">license details</a>), installed separately, to decode GIFs and encode the exported GIF. FFmpeg is not part of this site.</p>
+      </section>
+    </div>
+
+    <p id="cli-pointer" class="cli-pointer">Prefer your terminal? The command-line version and its instructions are <a href="https://github.com/eimaj/gif2ascii2gif#readme">on GitHub</a>.</p>
+  </main>
+
+  <footer class="site-footer">
+    <p>Source on GitHub: <a href="https://github.com/eimaj/gif2ascii2gif">eimaj/gif2ascii2gif</a></p>
+  </footer>
+</body>
+</html>

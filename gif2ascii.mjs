@@ -2,55 +2,98 @@
 // Convert a GIF (URL) into a standalone, colored-ASCII terminal player script.
 // Usage: node gif2ascii.mjs <gif-url> [--width 40] [--bg-threshold 40] [--keep-bg] [-o out.mjs]
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  DEFAULT_WIDTH, DEFAULT_BG_THRESHOLD, MAX_BG_DISTANCE, frameSize, frameDelay, convertFrames,
+} from './site/lib/core.mjs';
+import { playerSource } from './site/lib/player.mjs';
+import { scanGif, MalformedGifError } from './site/lib/scan.mjs';
+import { checkCodeSizes, NotAGifError } from './site/lib/decode.mjs';
 
 const PLAYERS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'players');
 
-const RAMP = ' .:-=+*#%@';
-const CHAR_ASPECT = 0.5; // terminal cells are ~2x taller than wide
-const MAX_BG_DISTANCE = 180; // RGB distance from the background that maps to the densest character
-const USAGE = 'usage: node gif2ascii.mjs <gif-url> [--width 40] [--bg-threshold 40] [--keep-bg] [-o out.mjs]';
+// A usage, option, or not-a-readable-GIF error, printed as is; any other error is printed after
+// "couldn't convert this GIF".
+class CliError extends Error {}
+
+const USAGE = `usage: node gif2ascii.mjs <gif-url> [--width ${DEFAULT_WIDTH}] [--bg-threshold ${DEFAULT_BG_THRESHOLD}] [--keep-bg] [-o out.mjs]`;
 
 function parseArgs(argv) {
-  const opts = { width: 40, out: null, input: null, keepBg: false, bgThreshold: 40 };
+  const opts = { width: DEFAULT_WIDTH, out: null, input: null, keepBg: false, bgThreshold: DEFAULT_BG_THRESHOLD };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--width') opts.width = Number(argv[++i]);
     else if (a === '--bg-threshold') opts.bgThreshold = Number(argv[++i]);
     else if (a === '--keep-bg') opts.keepBg = true;
     else if (a === '-o') opts.out = argv[++i];
-    else if (a.startsWith('-')) throw new Error(`unknown flag: ${a}`);
+    else if (a.startsWith('-')) throw new CliError(`unknown flag: ${a}`);
     else opts.input = a;
   }
-  if (!opts.input) throw new Error(USAGE);
-  if (!Number.isInteger(opts.width) || opts.width < 8) throw new Error(`--width must be an integer >= 8, got ${opts.width}`);
+  if (!opts.input) throw new CliError(USAGE);
+  if (!Number.isInteger(opts.width) || opts.width < 8) throw new CliError(`--width must be an integer >= 8, got ${opts.width}`);
   if (!(opts.bgThreshold >= 0 && opts.bgThreshold < MAX_BG_DISTANCE)) {
-    throw new Error(`--bg-threshold must be between 0 and ${MAX_BG_DISTANCE - 1}, got ${opts.bgThreshold}`);
+    throw new CliError(`--bg-threshold must be between 0 and ${MAX_BG_DISTANCE - 1}, got ${opts.bgThreshold}`);
   }
   return opts;
 }
 
-function probe(input) {
-  const json = execFileSync('ffprobe', [
-    '-v', 'error', '-select_streams', 'v:0',
-    '-show_entries', 'stream=width,height,avg_frame_rate',
-    '-of', 'json', input,
-  ], { encoding: 'utf8' });
-  const s = JSON.parse(json).streams?.[0];
-  if (!s) throw new Error(`no video stream found in ${input}`);
-  const [num, den] = s.avg_frame_rate.split('/').map(Number);
-  const fps = den ? num / den : 0;
-  return { width: s.width, height: s.height, fps: fps > 0 && fps <= 60 ? fps : 10 };
+// The GIF's bytes, downloaded for an http(s) URL and read from disk for a file: URL or a path.
+async function readInput(input) {
+  if (/^https?:\/\//i.test(input)) {
+    let res;
+    try {
+      res = await fetch(input);
+    } catch (err) {
+      throw new Error(`download failed: ${err.cause?.message ?? err.message} for ${input}`, { cause: err });
+    }
+    if (!res.ok) throw new Error(`download failed: HTTP ${res.status} for ${input}`);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+  return new Uint8Array(readFileSync(/^file:/i.test(input) ? fileURLToPath(input) : input));
 }
 
-function extractFrames(input, w, h, fps) {
-  const raw = execFileSync('ffmpeg', [
-    '-v', 'error', '-i', input,
-    '-vf', `fps=${fps},scale=${w}:${h}:flags=area`,
-    '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-',
-  ], { maxBuffer: 1 << 30 });
+// Dimensions, frame count, the player delay, and where the GIF ends, from the shared block scan the
+// site also uses, so a frame without a graphic control extension counts as 0 ms in both (ffprobe would
+// carry the last one forward). The site's LZW code-size check runs too, since ffmpeg drops such frames.
+function probe(bytes) {
+  let scan;
+  try {
+    scan = scanGif(bytes);
+    checkCodeSizes(scan);
+  } catch (err) {
+    if (err instanceof MalformedGifError) throw new CliError(`not a readable GIF (${err.message})`, { cause: err });
+    if (err instanceof NotAGifError) throw new CliError(`not a readable GIF (${err.detail})`, { cause: err });
+    throw err;
+  }
+  if (scan.frameCount === 0) throw new CliError('not a readable GIF (no frames)');
+  if (!scan.width || !scan.height) throw new CliError('not a readable GIF (zero size)');
+  return {
+    width: scan.width, height: scan.height, frameCount: scan.frameCount, end: scan.end,
+    delayMs: frameDelay(scan.frames.map((f) => f.delayMs)),
+  };
+}
+
+// One RGB frame per GIF frame (no frame-rate resampling), scaled with area averaging. `bytes` are the
+// scanned GIF only (up to its trailer), so ffmpeg, which would go on to decode a second GIF appended
+// to the file, decodes exactly what was scanned. They go through a temporary file rather than stdin,
+// so ffmpeg reads at its own pace and an early ffmpeg failure reports its own error, not a broken pipe.
+function extractFrames(bytes, w, h) {
+  const dir = mkdtempSync(join(tmpdir(), 'gif2ascii-'));
+  let raw;
+  try {
+    const gif = join(dir, 'input.gif');
+    writeFileSync(gif, bytes);
+    raw = execFileSync('ffmpeg', [
+      '-v', 'error', '-nostdin', '-f', 'gif', '-i', gif,
+      '-vf', `scale=${w}:${h}:flags=area`, '-fps_mode', 'passthrough',
+      '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-',
+    ], { maxBuffer: 1 << 30 });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
   const size = w * h * 3;
   if (raw.length === 0 || raw.length % size !== 0) {
     throw new Error(`unexpected ffmpeg output: ${raw.length} bytes is not a multiple of frame size ${size}`);
@@ -60,91 +103,28 @@ function extractFrames(input, w, h, fps) {
   return frames;
 }
 
-// Background = the most common color along the border of every frame.
-function detectBackground(frames, w, h) {
-  const buckets = new Map();
-  const add = (buf, x, y) => {
-    const i = (y * w + x) * 3;
-    const key = ((buf[i] >> 3) << 10) | ((buf[i + 1] >> 3) << 5) | (buf[i + 2] >> 3);
-    const s = buckets.get(key) ?? { n: 0, r: 0, g: 0, b: 0 };
-    s.n++; s.r += buf[i]; s.g += buf[i + 1]; s.b += buf[i + 2];
-    buckets.set(key, s);
-  };
-  for (const buf of frames) {
-    for (let x = 0; x < w; x++) { add(buf, x, 0); add(buf, x, h - 1); }
-    for (let y = 1; y < h - 1; y++) { add(buf, 0, y); add(buf, w - 1, y); }
-  }
-  let best = null;
-  for (const s of buckets.values()) if (!best || s.n > best.n) best = s;
-  return { r: best.r / best.n, g: best.g / best.n, b: best.b / best.n };
-}
-
-function pickChar(r, g, b, bg, threshold) {
-  if (!bg) {
-    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-    return RAMP[Math.min(RAMP.length - 1, Math.floor(lum * RAMP.length))];
-  }
-  const d = Math.hypot(r - bg.r, g - bg.g, b - bg.b);
-  if (d < threshold) return ' ';
-  const t = Math.min(1, (d - threshold) / (MAX_BG_DISTANCE - threshold));
-  return RAMP[1 + Math.min(RAMP.length - 2, Math.floor(t * (RAMP.length - 1)))];
-}
-
-function frameToAnsi(buf, w, h, bg, threshold) {
-  const lines = [];
-  for (let y = 0; y < h; y++) {
-    let line = '';
-    let lastColor = '';
-    for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 3;
-      const r = buf[i], g = buf[i + 1], b = buf[i + 2];
-      const ch = pickChar(r, g, b, bg, threshold);
-      const color = `\x1b[38;2;${r};${g};${b}m`;
-      if (ch !== ' ' && color !== lastColor) { line += color; lastColor = color; }
-      line += ch;
-    }
-    lines.push(line + '\x1b[0m');
-  }
-  return lines.join('\n');
-}
-
-function playerSource(frames, delayMs) {
-  return `#!/usr/bin/env node
-// Generated by gif2ascii.mjs — standalone colored-ASCII player. Ctrl-C to quit.
-const FRAMES = ${JSON.stringify(frames)};
-const DELAY_MS = ${delayMs};
-const out = process.stdout;
-const restore = () => out.write('\\x1b[0m\\x1b[?25h\\x1b[?1049l');
-process.on('exit', restore);
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM', () => process.exit(0));
-out.write('\\x1b[?1049h\\x1b[?25l\\x1b[2J');
-let i = 0;
-setInterval(() => {
-  out.write('\\x1b[H' + FRAMES[i]);
-  i = (i + 1) % FRAMES.length;
-}, DELAY_MS);
-`;
-}
-
-function main() {
+async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const src = probe(opts.input);
-  const w = opts.width;
-  const h = Math.max(1, Math.round(w * (src.height / src.width) * CHAR_ASPECT));
-  const raw = extractFrames(opts.input, w, h, src.fps);
-  const bg = opts.keepBg ? null : detectBackground(raw, w, h);
-  const frames = raw.map((f) => frameToAnsi(f, w, h, bg, opts.bgThreshold));
+  const bytes = await readInput(opts.input);
+  const src = probe(bytes);
+  const { w, h } = frameSize(src.width, src.height, opts.width);
+  const raw = extractFrames(bytes.subarray(0, src.end), w, h);
+  // ffmpeg drops a frame it cannot draw, such as one wholly outside the GIF's screen or one with corrupt
+  // image data; the site refuses such GIFs, so do the same.
+  if (raw.length !== src.frameCount) {
+    throw new Error(`ffmpeg decoded ${raw.length} of the GIF's ${src.frameCount} frames; a frame outside the GIF's screen or with corrupt image data is not supported`);
+  }
+  const frames = convertFrames(raw, w, h, { keepBg: opts.keepBg, bgThreshold: opts.bgThreshold });
   const name = basename(new URL(opts.input, 'file:///').pathname).replace(/\.gif$/i, '') || 'animation';
   const out = opts.out ?? join(PLAYERS_DIR, `${name}.mjs`);
   mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, playerSource(frames, Math.round(1000 / src.fps)), { mode: 0o755 });
-  console.log(`wrote ${out}: ${frames.length} frames, ${w}x${h}, ${src.fps.toFixed(2)} fps`);
+  writeFileSync(out, playerSource(frames, src.delayMs), { mode: 0o755 });
+  console.log(`wrote ${out}: ${frames.length} frames, ${w}x${h}, ${(1000 / src.delayMs).toFixed(2)} fps`);
 }
 
 try {
-  main();
+  await main();
 } catch (err) {
-  console.error(`gif2ascii: ${err.message}`);
+  console.error(err instanceof CliError ? `gif2ascii: ${err.message}` : `gif2ascii: couldn't convert this GIF: ${err.message}`);
   process.exit(1);
 }

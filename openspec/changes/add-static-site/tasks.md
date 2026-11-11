@@ -1,0 +1,53 @@
+# Tasks
+
+## 1. Shared conversion core
+
+- [x] 1.1 Create `site/lib/core.mjs` (ramp, frame sizing, `detectBackground`, `pickChar`, `frameToAnsi`) and `site/lib/glyphs.mjs`, moved from the CLI scripts with no behavior change, using only typed arrays (no `Buffer`, no `node:` imports). Verify: `node --test tests/unit/core.test.mjs` covers sizing (220×366 at 40 → 40×33), white-background detection, threshold and `@`-at-180 picking, keep-bg luminance picking, and one escape per same-color run.
+- [x] 1.2 Create `site/lib/render.mjs` (`parseAnsiFrame`, `renderFrameRGBA` with margin, scale, transparent or hex background) and `site/lib/player.mjs` (`playerSource`). Verify: unit tests for glyph coverage of every ramp character, unknown-character error, transparent vs solid alpha, scale dimensions, and player text containing `FRAMES`/`DELAY_MS`.
+- [x] 1.3 Switch `gif2ascii.mjs` and `ascii2gif.mjs` to import from `site/lib/`. Verify: regenerate `players/dance-dancing.mjs` and its GIF and confirm the player is byte-identical to one generated before the change (save the before copy first).
+- [x] 1.4 Add `tests/integration/cli.test.mjs`: build a small GIF with ffmpeg `lavfi` (no network), run both CLIs, and check frames, dimensions, and transparency with `ffprobe`. Verify: `node --test tests/integration` passes.
+- [x] 1.5 Add `package.json` (private, `type: module`, scripts `test`, `test:unit`, `test:integration`, `test:e2e`, `serve`) and update `.gitignore` with `node_modules/`, `test-results/`, `playwright-report/`, `.wrangler/`, `.dev.vars`, `wrangler.toml`, `.env*`. Verify: `npm test` runs unit and integration suites.
+
+## 2. Vendored libraries
+
+- [x] 2.1 Vendor gifenc 1.0.3 `dist/gifenc.esm.js` with `LICENSE` and `SOURCE.md` (URL, date, SHA-256) under `site/vendor/gifenc/`. Verify: the file imports in Node and exposes `GIFEncoder`, `quantize`, `applyPalette`.
+- [x] 2.2 Vendor the esm.sh bundle of gifuct-js 2.1.2 as `site/vendor/gifuct-js/gifuct.bundle.mjs` with both license files (gifuct-js, js-binary-schema-parser 2.0.3) and `SOURCE.md`. Verify: the file imports in Node and exposes `parseGIF`, `decompressFrames`.
+- [x] 2.3 Add `tests/unit/vendor.test.mjs` checking each vendored file against its recorded SHA-256. Verify: test passes, and fails after a one-byte edit (revert after checking).
+
+## 3. Browser converter
+
+- [x] 3.1 Create `site/index.html`, `site/styles.css` (monospace, dark default, light via `prefers-color-scheme`, phone-width safe), and `site/app.js` skeleton with input area (file picker, drop zone, URL field, "Try the demo"), controls, canvas, and download buttons. Verify: `npm run serve`, page loads with no console errors at desktop and 375px width.
+- [x] 3.2 Implement decoding in `site/lib/decode.mjs`: gifuct-js parse, size-limit checks (20 MB, 300 frames) and pixel-limit checks (screen sides over 1024, a frame extending past the screen, frames × screen area over 50 megapixels, screen more than 5 times taller than wide) from the header before decompressing, one frame decompressed at a time, disposal-aware compositing, area resampling, frame-rate calculation. Verify: unit test with a generated GIF using disposal 2 and 3 matches expected composited pixels; each over-limit input, including tiny GIFs whose headers declare huge or off-screen sizes, throws a typed limit error with the actual value.
+- [x] 3.3 Wire inputs, errors, and blocking: CORS failure message, not-a-GIF message that keeps the previous result, limit-block message stating limit, actual value, and why. Verify: manual check of each message; covered again in E2E.
+- [x] 3.4 Wire controls and the canvas preview (decode once, re-convert on control change, loop at source fps, checkerboard when transparent). Verify: changing width updates the canvas size live.
+- [x] 3.5 Implement exports: GIF via gifenc (transparent index, `dispose: 2`, loop) and player via `playerSource`, both named after the source. Verify: the exported GIF's frame count and size match the preview; the downloaded `.mjs` plays with `node`.
+- [x] 3.6 Add the CLI-vs-site parity test to `tests/integration/`: identical decoded frames through both code paths produce byte-identical player text, at several frame rates (7, 15, 24, 30, and 0.5 fps) and with uneven or zero GIF delays, with the same frame count and delay; a GIF with a frame outside its screen is refused by both. Verify: `node --test tests/integration` passes.
+- [x] 3.7 Fetch URLs in `site/lib/fetch.mjs`: read the body as a stream stopped once it passes 20 MB whatever its `Content-Length` says, give up after 30 seconds, and tell a timeout, a caller abort, and a cross-origin block apart, without `AbortSignal.any`. Verify: `node --test tests/unit/fetch.test.mjs` covers each path.
+- [x] 3.8 Scan the GIF's block structure in `site/lib/scan.mjs` before `parseGIF` (design D5): cap blocks at 1,264, refuse truncated or unknown blocks, and take the frame, code-size, and pixel checks from the scan. Verify: `tests/unit/scan.test.mjs`, and the 19.5 MB comment-flood test in `tests/unit/decode.test.mjs` is refused in under 1 s with under 32 MB of heap growth.
+- [x] 3.9 Take both paths' frame delays from the scan (design D2): the CLI reads the GIF's bytes itself, scans them instead of running ffprobe, and hands them to ffmpeg, so a frame without a graphic control extension counts as 0 ms in both. Verify: the parity test with a GIF whose later frames have no graphic control extension gives 200 ms from both.
+- [x] 3.10 Cap data sub-blocks in the scan (design D5): count data sub-blocks (not the zero-size terminators) and refuse, as not a readable GIF stating the count and the limit, more than 4,096 + 2 per block + 1 per 64 bytes of file, in the site and the CLI. Verify: `tests/unit/scan.test.mjs` (count, at the limit, one over), the 18 MB one-byte sub-block floods (comment, application extension, frame data) in `tests/unit/decode.test.mjs` refused in under 1 s with under 32 MB of heap growth, and the CLI flood test in `tests/integration/cli.test.mjs`.
+- [x] 3.11 Handle GIF edge cases from the shared scan (design D2, D5): both paths stop at the trailer; the site takes each image's graphic control fields from the scan and cuts plain-text extensions before `parseGIF`; the CLI runs the LZW code-size check, refuses a zero-size screen, reads `file:` URLs, names the URL and cause of a network failure, and hands ffmpeg a temporary file; both CLI scripts print usage, option, and not-a-readable-GIF errors as they are and every other error after "<script>: couldn't convert this GIF:", exiting 1. Verify: `tests/unit/scan.test.mjs`, `tests/unit/decode.test.mjs` (two comments, two application extensions, a comment then an application extension, plain text, an appended GIF), and `tests/integration/cli.test.mjs` (appended GIF, code size 9, zero size, `file:` URL, refused connection, failing ffmpeg on a 2 MB input, the error prefix from both scripts).
+
+## 4. Page content
+
+- [x] 4.1 Add "How it works" (three steps), a line pointing to the repo README for the command-line version, and the footer repo link. Verify: the e2e test finds no CLI section and the link's exact href.
+- [x] 4.2 Add "Credits and licenses" listing gifenc, gifuct-js, and js-binary-schema-parser (name, pinned version, project link, license name, link to the served license file, what it is used for) and ffmpeg for the CLI. Verify: every license link returns the license text from the local server.
+- [x] 4.3 Add the privacy note generated from `site/lib/events.mjs` so it always lists the real events and fields. Verify: unit test asserts every allowlisted event and field appears in the rendered note text.
+- [x] 4.4 Show "How it works", "Privacy", and "Credits" as one accessible tab set below the converter (arrow/Home/End keys, URL hash deep links, every panel readable without JavaScript), keeping the command-line pointer and the footer outside it. Verify: e2e tests cover the default tab, clicking, keys, `/#credits`, and the no-JavaScript layout.
+
+## 5. Usage events and hardening
+
+- [x] 5.1 Create `site/lib/events.mjs` (allowlist, enums, bucketing helpers) and `functions/api/event.js` per design D6. Verify: `tests/unit/event.test.mjs` covers 405, 403 (wrong and missing origin), 413, 400 (bad JSON, unknown event, bad enum, extra field), 503 (no binding), and 204 with a data point containing only the allowed fields.
+- [x] 5.2 Send events from the page (`convert`, `export_gif`, `export_player`, `blocked_too_large`) with `sendBeacon` and a `keepalive` fetch fallback, never awaiting the result. Verify: with `/api/event` returning 404 locally the converter still works and shows no error.
+- [x] 5.3 Add `site/robots.txt` (allow all, disallow `/api/`) and `site/_headers` (CSP per design D7, `nosniff`, `no-referrer`, `Permissions-Policy`). Verify: the page works under the CSP in Chromium (no CSP violations in the console with the policy applied by the local server).
+- [x] 5.4 Confirm no deploy configuration is committed: grep the repo for account IDs, the custom domain, `wrangler`, and dataset names. Verify: grep finds only the `.gitignore` guards and the `EVENTS` binding name.
+
+## 6. Browser tests and docs
+
+- [x] 6.1 Add `tests/serve.mjs` (zero-dependency static server for `site/` that applies `_headers`) and `playwright.config.mjs` (Chromium only, `webServer` runs `serve.mjs`). Add `@playwright/test` as the only dev dependency. Verify: `npx playwright test --list` shows the suite.
+- [x] 6.2 Write E2E tests: upload a generated fixture and see the preview play, change width and see the canvas resize, download both exports and check names and GIF frame count, upload a 301-frame fixture and see the block message. Verify: `npm run test:e2e` passes, one test at a time, Chromium only.
+- [x] 6.3 Update `README.md` with the site, the shared-core layout, and how to run each test suite. Verify: every command in the README runs as written.
+
+## Deployment note
+
+- Deployment settings live outside this repo; the only in-repo coupling is the `EVENTS` binding name.

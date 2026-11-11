@@ -1,1 +1,8 @@
 players/
+node_modules/
+test-results/
+playwright-report/
+.wrangler/
+.dev.vars
+wrangler.toml
+.env*
