@@ -28,7 +28,9 @@ function skipSubBlocks(bytes, p) {
 }
 
 // Returns the screen size, the number of frames (image descriptors) and of blocks (extensions plus
-// image descriptors), and for the first `maxFrames` frames their rectangle and LZW minimum code size.
+// image descriptors), and for the first `maxFrames` frames their rectangle, LZW minimum code size, and
+// delay in ms. A graphic control extension sets the delay of the next frame only; a frame with none
+// gets 0, as browsers do (ffmpeg instead carries the last one forward).
 // A file that ends cleanly between blocks without a trailer is accepted, as browsers do.
 export function scanGif(bytes, { maxFrames = Infinity } = {}) {
   const u16 = (p) => bytes[p] | (bytes[p + 1] << 8);
@@ -40,7 +42,7 @@ export function scanGif(bytes, { maxFrames = Infinity } = {}) {
   if (p > bytes.length) throw new MalformedGifError('truncated global color table');
 
   const frames = [];
-  let frameCount = 0, blockCount = 0;
+  let frameCount = 0, blockCount = 0, delayMs = 0;
   while (p < bytes.length && bytes[p] !== TRAILER) {
     const introducer = bytes[p];
     blockCount++;
@@ -49,6 +51,8 @@ export function scanGif(bytes, { maxFrames = Infinity } = {}) {
       // The decoder reads a GCE as exactly 4 data bytes, so any other size would desynchronize it.
       if (bytes[p + 1] === GCE) {
         if (bytes[p + 2] !== 4) throw new MalformedGifError(`graphic control extension of ${bytes[p + 2]} bytes, not 4`);
+        if (p + 5 >= bytes.length) throw new MalformedGifError('truncated graphic control extension');
+        delayMs = u16(p + 4) * 10;
       }
       p = skipSubBlocks(bytes, p + 2);
     } else if (introducer === IMAGE) {
@@ -57,8 +61,9 @@ export function scanGif(bytes, { maxFrames = Infinity } = {}) {
       if (codeAt >= bytes.length) throw new MalformedGifError('truncated local color table');
       frameCount++;
       if (frames.length < maxFrames) {
-        frames.push({ left: u16(p + 1), top: u16(p + 3), width: u16(p + 5), height: u16(p + 7), codeSize: bytes[codeAt] });
+        frames.push({ left: u16(p + 1), top: u16(p + 3), width: u16(p + 5), height: u16(p + 7), codeSize: bytes[codeAt], delayMs });
       }
+      delayMs = 0;
       p = skipSubBlocks(bytes, codeAt + 1);
     } else {
       throw new MalformedGifError(`unknown block 0x${introducer.toString(16).padStart(2, '0')} at byte ${p}`);

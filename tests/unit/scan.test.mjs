@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scanGif, MalformedGifError } from '../../site/lib/scan.mjs';
-import { RED, BLUE, encode, declaring, withExtensions } from '../helpers/gifs.mjs';
+import { RED, BLUE, encode, declaring, withExtensions, withoutGce } from '../helpers/gifs.mjs';
 
 const frame = { w: 1, h: 1, palette: [RED, BLUE], index: [0] };
 
@@ -13,7 +13,12 @@ test('scanGif: screen, frame rectangles, code sizes, and block counts', () => {
   assert.equal(scan.frameCount, 3);
   // gifenc writes a loop-count application extension, then a graphic control extension per frame.
   assert.equal(scan.blockCount, 1 + 3 * 2);
-  assert.deepEqual(scan.frames, Array(3).fill({ left: 3, top: 5, width: 4, height: 2, codeSize: 2 }));
+  assert.deepEqual(scan.frames, Array(3).fill({ left: 3, top: 5, width: 4, height: 2, codeSize: 2, delayMs: 100 }));
+});
+
+test('scanGif: a graphic control extension sets only the next frame\'s delay; a frame with none gets 0', () => {
+  const bytes = withoutGce(encode([250, 500, 70, 40].map((delay) => ({ ...frame, delay }))), [1, 3]);
+  assert.deepEqual(scanGif(bytes).frames.map((f) => f.delayMs), [250, 0, 70, 0]);
 });
 
 test('scanGif: counts every frame but records only the first maxFrames', () => {

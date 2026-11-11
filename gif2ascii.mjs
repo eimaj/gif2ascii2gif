@@ -2,13 +2,14 @@
 // Convert a GIF (URL) into a standalone, colored-ASCII terminal player script.
 // Usage: node gif2ascii.mjs <gif-url> [--width 40] [--bg-threshold 40] [--keep-bg] [-o out.mjs]
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_WIDTH, DEFAULT_BG_THRESHOLD, MAX_BG_DISTANCE, frameSize, frameDelay, convertFrames,
 } from './site/lib/core.mjs';
 import { playerSource } from './site/lib/player.mjs';
+import { scanGif, MalformedGifError } from './site/lib/scan.mjs';
 
 const PLAYERS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'players');
 
@@ -33,28 +34,38 @@ function parseArgs(argv) {
   return opts;
 }
 
-// Dimensions and the player delay, from the GIF's own per-frame delays (same rule as the site).
-function probe(input) {
-  const json = execFileSync('ffprobe', [
-    '-v', 'error', '-select_streams', 'v:0',
-    '-show_entries', 'stream=width,height,time_base:packet=duration',
-    '-of', 'json', input,
-  ], { encoding: 'utf8', maxBuffer: 1 << 26 });
-  const { streams, packets = [] } = JSON.parse(json);
-  const s = streams?.[0];
-  if (!s) throw new Error(`no video stream found in ${input}`);
-  const [num, den] = s.time_base.split('/').map(Number);
-  const delays = packets.map((p) => (Number(p.duration) * num * 1000) / den);
-  return { width: s.width, height: s.height, frameCount: packets.length, delayMs: frameDelay(delays) };
+// The GIF's bytes, downloaded for an http(s) URL and read from disk otherwise.
+async function readInput(input) {
+  if (/^https?:\/\//i.test(input)) {
+    const res = await fetch(input);
+    if (!res.ok) throw new Error(`download failed: HTTP ${res.status} for ${input}`);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+  return new Uint8Array(readFileSync(input));
 }
 
-// One RGB frame per GIF frame (no frame-rate resampling), scaled with area averaging.
-function extractFrames(input, w, h) {
+// Dimensions, frame count, and the player delay, from the shared block scan the site also uses, so a
+// frame without a graphic control extension counts as 0 ms in both (ffprobe would carry the last one forward).
+function probe(bytes) {
+  let scan;
+  try {
+    scan = scanGif(bytes);
+  } catch (err) {
+    if (err instanceof MalformedGifError) throw new Error(`not a readable GIF (${err.message})`, { cause: err });
+    throw err;
+  }
+  if (scan.frameCount === 0) throw new Error('not a readable GIF (no frames)');
+  return { width: scan.width, height: scan.height, frameCount: scan.frameCount, delayMs: frameDelay(scan.frames.map((f) => f.delayMs)) };
+}
+
+// One RGB frame per GIF frame (no frame-rate resampling), scaled with area averaging. The bytes go
+// to ffmpeg on stdin, so it decodes exactly what was scanned.
+function extractFrames(bytes, w, h) {
   const raw = execFileSync('ffmpeg', [
-    '-v', 'error', '-i', input,
+    '-v', 'error', '-f', 'gif', '-i', 'pipe:0',
     '-vf', `scale=${w}:${h}:flags=area`, '-fps_mode', 'passthrough',
     '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-',
-  ], { maxBuffer: 1 << 30 });
+  ], { input: bytes, maxBuffer: 1 << 30 });
   const size = w * h * 3;
   if (raw.length === 0 || raw.length % size !== 0) {
     throw new Error(`unexpected ffmpeg output: ${raw.length} bytes is not a multiple of frame size ${size}`);
@@ -64,11 +75,12 @@ function extractFrames(input, w, h) {
   return frames;
 }
 
-function main() {
+async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const src = probe(opts.input);
+  const bytes = await readInput(opts.input);
+  const src = probe(bytes);
   const { w, h } = frameSize(src.width, src.height, opts.width);
-  const raw = extractFrames(opts.input, w, h);
+  const raw = extractFrames(bytes, w, h);
   // ffmpeg drops a frame that lies wholly outside the GIF's screen; the site refuses such GIFs, so do the same.
   if (raw.length !== src.frameCount) {
     throw new Error(`ffmpeg decoded ${raw.length} of the GIF's ${src.frameCount} frames, most likely because a frame lies outside the GIF's screen, which is not supported`);
@@ -82,7 +94,7 @@ function main() {
 }
 
 try {
-  main();
+  await main();
 } catch (err) {
   console.error(`gif2ascii: ${err.message}`);
   process.exit(1);

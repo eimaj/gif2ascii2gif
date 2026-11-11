@@ -148,7 +148,6 @@ export function decodeGif(buffer) {
     throw new NotAGifError(`the decoder read ${parsedFrames} of ${scan.frameCount} frames`);
   }
   // Decompress lazily, one frame per composite step, so only one frame's pixels are alive at a time.
-  const delays = [];
   function* patches() {
     for (const f of gif.frames) {
       if (!f.image) continue;
@@ -158,12 +157,12 @@ export function decodeGif(buffer) {
       } catch (err) {
         throw new NotAGifError(err.message, { cause: err });
       }
-      delays.push(patch.delay);
       yield patch;
     }
   }
   const frames = compositeFrames(patches(), width, height);
-  return { width, height, frames, delayMs: frameDelay(delays) };
+  // Delays come from the scan, which the CLI shares, so both apply one rule to frames without a GCE.
+  return { width, height, frames, delayMs: frameDelay(scan.frames.map((f) => f.delayMs)) };
 }
 
 // Draw each patch (from any iterable) onto a full-size RGBA canvas, honoring disposal:

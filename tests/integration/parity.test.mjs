@@ -9,7 +9,7 @@ import { frameSize, convertFrames } from '../../site/lib/core.mjs';
 import { decodeGif, LimitError } from '../../site/lib/decode.mjs';
 import { playerSource, parsePlayer } from '../../site/lib/player.mjs';
 import { tempDir, makeGif, probeGif } from '../helpers/fixtures.mjs';
-import { RED, BLUE, WHITE, encode, imageDescriptorOffsets } from '../helpers/gifs.mjs';
+import { RED, BLUE, WHITE, encode, imageDescriptorOffsets, withoutGce } from '../helpers/gifs.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -78,15 +78,25 @@ for (const { fps, frames, nominalMs } of RATES) {
 }
 
 // A 64×48 white GIF with a red block moving right, one frame per delay (ms), written by gifenc.
-function gifWithDelays(delays) {
+// Frames listed in `noGce` (0-based) get no graphic control extension, so they carry no delay.
+function gifWithDelays(delays, noGce = []) {
   const frames = delays.map((delay, n) => ({
     w: 64, h: 48, palette: [WHITE, RED], delay,
     index: Array.from({ length: 64 * 48 }, (_, i) => +(i % 64 >= n * 12 && i % 64 < n * 12 + 16 && i >= 16 * 64 && i < 32 * 64)),
   }));
   const gif = join(tempDir(), 'delays.gif');
-  writeFileSync(gif, encode(frames));
+  writeFileSync(gif, withoutGce(encode(frames), noGce));
   return gif;
 }
+
+test('parity: a frame without a graphic control extension counts as 0 ms (100 ms) in both', () => {
+  // Frame 1 says 500 ms; frames 2–4 say nothing, so (500 + 3 × 100) / 4 = 200 ms. ffmpeg alone would
+  // carry 500 ms forward to the frames without one.
+  const gif = gifWithDelays([500, 500, 500, 500], [1, 2, 3]);
+  const player = assertParity(gif, [], {});
+  assert.equal(player.frames.length, 4);
+  assert.equal(player.delayMs, 200);
+});
 
 const DELAYS = [
   { label: 'uneven', delays: [100, 500, 100, 500], expectMs: 300 },

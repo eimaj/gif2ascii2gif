@@ -15,7 +15,7 @@ export const DEFAULT_GIF_DELAY_MS = 100;
 
 // The player's one fixed delay, from the GIF's own per-frame delays in ms: their average
 // (delays under MIN_GIF_DELAY_MS count as DEFAULT_GIF_DELAY_MS), clamped to MIN_FPS–MAX_FPS.
-// The CLI (delays from ffprobe) and the site (delays from gifuct-js) both use this rule.
+// The CLI and the site both use this rule, on delays from the shared block scan (scan.mjs).
 export function frameDelay(delays) {
   if (!delays.length) return DEFAULT_GIF_DELAY_MS;
   // The comparison also catches missing (null, NaN) delays.

@@ -68,3 +68,17 @@ export function withExtensions(bytes, count, ext = [0x21, 0xfe, 0x00]) {
   out.set(bytes.subarray(at), at + count * ext.length);
   return out;
 }
+
+// `bytes` with the graphic control extension removed from each frame listed in `frames` (0-based),
+// so those frames carry no delay. gifenc writes an 8-byte one right before every image descriptor.
+export function withoutGce(bytes, frames) {
+  const cut = imageDescriptorOffsets(bytes).filter((_, i) => frames.includes(i)).map((d) => d - 8);
+  for (const p of cut) {
+    if (bytes[p] !== 0x21 || bytes[p + 1] !== 0xf9) throw new Error(`no graphic control extension at byte ${p}`);
+  }
+  const out = new Uint8Array(bytes.length - 8 * cut.length);
+  let from = 0, to = 0;
+  for (const p of cut) { out.set(bytes.subarray(from, p), to); to += p - from; from = p + 8; }
+  out.set(bytes.subarray(from), to);
+  return out;
+}
