@@ -154,6 +154,15 @@ test('a pixel-limit refusal is counted without a frames bucket', async ({ page }
   await expect.poll(() => bodies).toEqual([{ event: 'blocked_too_large', input: 'file' }]);
 });
 
+test('a 1920×1080 GIF is refused with its size, the 1024 limit, and a resize hint', async ({ page }) => {
+  await page.goto('/');
+  await page.setInputFiles('#file', { name: 'hd.gif', mimeType: 'image/gif', buffer: Buffer.from(declaring({ screen: [1920, 1080] })) });
+  const message = page.locator('#message');
+  await expect(message).toContainText('1920×1080 pixels; the limit is 1024×1024');
+  await expect(message).toContainText('Resize it');
+  expect(await canvasWidth(page)).toBe(0);
+});
+
 test('a conversion error after a control change is shown and keeps the previous result', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (err) => pageErrors.push(err));

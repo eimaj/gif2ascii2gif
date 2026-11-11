@@ -5,7 +5,7 @@ import { frameDelay } from './core.mjs';
 
 export const MAX_FRAMES = 300;
 export const MAX_BYTES = 20 * 1024 * 1024;
-export const MAX_SIDE = 4096; // pixels per side of the GIF's screen; every frame must fit inside the screen
+export const MAX_SIDE = 1024; // pixels per side of the GIF's screen; every frame must fit inside the screen
 // Frames × screen area. Decoding keeps one RGB copy of the screen per frame (3 B/px, so 150 MB at
 // this limit) and one RGBA canvas. Frames are decompressed one at a time; gifuct-js holds each
 // frame's pixels at about 12 B/px (20 B/px interlaced) until that frame is composited.
@@ -19,7 +19,7 @@ const LIMIT_MESSAGES = {
   frames: (actual, limit) => `This GIF has ${actual} frames; the limit is ${limit}.`,
   bytes: (actual, limit) => `This file is ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
   download: (actual, limit) => `The download was stopped after ${formatBytes(actual)}; the limit is ${formatBytes(limit)}.`,
-  pixels: (actual, limit) => `This GIF is ${actual.width}×${actual.height} pixels; the limit is ${limit}×${limit}.`,
+  pixels: (actual, limit) => `This GIF is ${actual.width}×${actual.height} pixels; the limit is ${limit}×${limit}. Resize it to at most ${limit} pixels on each side and try again.`,
   bounds: (actual, limit) => `A ${actual.width}×${actual.height} frame of this GIF at ${actual.left},${actual.top} extends past its ${limit.width}×${limit.height} screen; every frame must fit inside the screen.`,
   total: (actual, limit) => `This GIF has ${count(actual)} pixels across all its frames (frames × width × height); the limit is ${count(limit)}.`,
   // Rounded up, so a GIF just over the limit never reads as equal to it.

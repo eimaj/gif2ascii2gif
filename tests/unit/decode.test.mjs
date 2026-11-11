@@ -59,12 +59,21 @@ test('decodeGif: a tiny GIF declaring a huge screen throws a pixels LimitError b
     assert.equal(err.kind, 'pixels');
     assert.equal(err.limit, MAX_SIDE);
     assert.deepEqual(err.actual, { width: 60000, height: 60000 });
-    assert.equal(err.message, 'This GIF is 60000×60000 pixels; the limit is 4096×4096.');
+    assert.equal(err.message, 'This GIF is 60000×60000 pixels; the limit is 1024×1024. Resize it to at most 1024 pixels on each side and try again.');
     return true;
   });
 });
 
-test('decodeGif: a screen over 4096 on one side throws pixels even when its area is small', () => {
+test('decodeGif: a 1920×1080 GIF is refused with its size, the limit, and a resize hint', () => {
+  assert.throws(() => decodeGif(declaring({ screen: [1920, 1080] })), (err) => {
+    assert.ok(err instanceof LimitError);
+    assert.equal(err.kind, 'pixels');
+    assert.equal(err.message, 'This GIF is 1920×1080 pixels; the limit is 1024×1024. Resize it to at most 1024 pixels on each side and try again.');
+    return true;
+  });
+});
+
+test('decodeGif: a screen over 1024 on one side throws pixels even when its area is small', () => {
   assert.throws(() => decodeGif(declaring({ screen: [65535, 200] })), (err) => {
     assert.ok(err instanceof LimitError);
     assert.equal(err.kind, 'pixels');
@@ -79,18 +88,18 @@ test('decodeGif: a frame rectangle larger than its screen throws a bounds LimitE
 });
 
 test('decodeGif: a tiny GIF whose interlaced frames overhang the screen is refused before allocating', () => {
-  const bytes = declaring({ screen: [4082, 4082], frame: [4096, 4069], at: [0, 0], interlaced: true, count: 3 });
+  const bytes = declaring({ screen: [1020, 1020], frame: [1024, 1017], at: [0, 0], interlaced: true, count: 3 });
   assert.ok(bytes.length < 200);
   const before = process.memoryUsage().arrayBuffers;
   assert.throws(() => decodeGif(bytes), (err) => {
     assert.ok(err instanceof LimitError);
     assert.equal(err.kind, 'bounds');
-    assert.deepEqual(err.limit, { width: 4082, height: 4082 });
-    assert.deepEqual(err.actual, { left: 0, top: 0, width: 4096, height: 4069 });
-    assert.equal(err.message, 'A 4096×4069 frame of this GIF at 0,0 extends past its 4082×4082 screen; every frame must fit inside the screen.');
+    assert.deepEqual(err.limit, { width: 1020, height: 1020 });
+    assert.deepEqual(err.actual, { left: 0, top: 0, width: 1024, height: 1017 });
+    assert.equal(err.message, 'A 1024×1017 frame of this GIF at 0,0 extends past its 1020×1020 screen; every frame must fit inside the screen.');
     return true;
   });
-  // One decompressed frame would be a 66 MB RGBA patch.
+  // One decompressed frame would be a 4 MB RGBA patch.
   assert.ok(process.memoryUsage().arrayBuffers - before < 1 << 20);
 });
 
@@ -128,19 +137,19 @@ test('decodeGif: LZW code sizes 2 and 8 decode, 1 and 9 are refused', () => {
 });
 
 test('decodeGif: frame rectangles that fit the screen are counted by frames × screen size', () => {
-  // Four full-screen 4000×4000 frames: each frame's own pixels are inside the screen budget.
-  const bytes = declaring({ screen: [4000, 4000], frame: [4000, 4000], count: 4 });
-  assert.throws(() => decodeGif(bytes), (err) => err instanceof LimitError && err.kind === 'total' && err.actual === 4 * 4000 * 4000);
+  // 51 full-screen 1000×1000 frames: each frame's own pixels are inside the screen budget.
+  const bytes = declaring({ screen: [1000, 1000], frame: [1000, 1000], count: 51 });
+  assert.throws(() => decodeGif(bytes), (err) => err instanceof LimitError && err.kind === 'total' && err.actual === 51 * 1000 * 1000);
 });
 
 test('decodeGif: frames × screen size over the total budget throws a total LimitError', () => {
-  const bytes = declaring({ screen: [4000, 4000], count: 10 });
+  const bytes = declaring({ screen: [1000, 1000], count: 60 });
   assert.throws(() => decodeGif(bytes), (err) => {
     assert.ok(err instanceof LimitError);
     assert.equal(err.kind, 'total');
     assert.equal(err.limit, MAX_TOTAL_PIXELS);
-    assert.equal(err.actual, 10 * 4000 * 4000);
-    assert.equal(err.message, 'This GIF has 160,000,000 pixels across all its frames (frames × width × height); the limit is 50,000,000.');
+    assert.equal(err.actual, 60 * 1000 * 1000);
+    assert.equal(err.message, 'This GIF has 60,000,000 pixels across all its frames (frames × width × height); the limit is 50,000,000.');
     return true;
   });
 });
@@ -155,17 +164,17 @@ const kindOf = (gif) => {
 };
 
 test('limits are the documented numbers', () => {
-  assert.equal(MAX_SIDE, 4096);
+  assert.equal(MAX_SIDE, 1024);
   assert.equal(MAX_TOTAL_PIXELS, 50_000_000);
   assert.equal(MAX_ASPECT, 5);
 });
 
 test('checkPixels: exact boundaries', () => {
-  assert.equal(kindOf(header(4096, 4096)), null);
-  assert.equal(kindOf(header(4097, 4096)), 'pixels');
-  assert.equal(kindOf(header(4096, 4097)), 'pixels');
-  assert.equal(kindOf(header(2500, 2000, 10)), null); // exactly 50,000,000
-  assert.equal(kindOf(header(2500, 2000, 11)), 'total');
+  assert.equal(kindOf(header(1024, 1024)), null);
+  assert.equal(kindOf(header(1025, 1024)), 'pixels');
+  assert.equal(kindOf(header(1024, 1025)), 'pixels');
+  assert.equal(kindOf(header(1000, 1000, 50)), null); // exactly 50,000,000
+  assert.equal(kindOf(header(1000, 1000, 51)), 'total');
   const overhang = header(100, 100);
   overhang.frames = [{ image: { descriptor: { left: 1, top: 0, width: 100, height: 100 } } }];
   assert.equal(kindOf(overhang), 'bounds');
@@ -217,7 +226,7 @@ test('compositeFrames: returns RGB frames, not full RGBA copies', () => {
 });
 
 test('decodeGif: a source more than 5 times taller than wide throws an aspect LimitError', () => {
-  const bytes = declaring({ screen: [10, 2000] });
+  const bytes = declaring({ screen: [5, 1000] });
   assert.throws(() => decodeGif(bytes), (err) => {
     assert.ok(err instanceof LimitError);
     assert.equal(err.kind, 'aspect');
