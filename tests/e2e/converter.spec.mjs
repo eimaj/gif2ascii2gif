@@ -4,6 +4,7 @@ import { basename, join } from 'node:path';
 import { tempDir, makeGif, probeGif, firstFrameAlpha } from '../helpers/fixtures.mjs';
 import { declaring } from '../helpers/gifs.mjs';
 import { parsePlayer } from '../../site/lib/player.mjs';
+import { EVENTS, FIELDS } from '../../site/lib/events.mjs';
 
 const DEMO_URL = 'https://media.tenor.com/1iOUXZFLpBgAAAAM/dance-dancing.gif';
 
@@ -285,9 +286,103 @@ test('background controls reach the export and the preview', async ({ page }) =>
 
 test('the rendered privacy note discloses Web Analytics and links its policy', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('tab', { name: 'Privacy' }).click();
   const note = page.locator('#privacy-note');
+  await expect(note).toBeVisible();
   await expect(note).toContainText('Cloudflare Web Analytics');
   await expect(note.locator('a[href="https://www.cloudflare.com/privacypolicy/"]')).toHaveText('Cloudflare privacy policy');
+});
+
+// ---- About tabs ----------------------------------------------------------------------------
+
+const TABS = [['How it works', 'how-it-works'], ['Privacy', 'privacy'], ['Credits', 'credits']];
+
+async function expectSelected(page, name) {
+  for (const [label, id] of TABS) {
+    const selected = label === name;
+    await expect(page.getByRole('tab', { name: label })).toHaveAttribute('aria-selected', String(selected));
+    await expect(page.getByRole('tab', { name: label })).toHaveAttribute('tabindex', selected ? '0' : '-1');
+    await (selected ? expect(page.locator(`#${id}`)).toBeVisible() : expect(page.locator(`#${id}`)).toBeHidden());
+  }
+}
+
+test('the about tabs are in order, wired to their panels, and How it works is selected', async ({ page }) => {
+  await page.goto('/');
+  const tabs = page.getByRole('tablist').getByRole('tab');
+  await expect(tabs).toHaveText(TABS.map(([label]) => label));
+  for (const [label, id] of TABS) {
+    const tab = page.getByRole('tab', { name: label });
+    await expect(tab).toHaveAttribute('aria-controls', id);
+    await expect(page.locator(`#${id}`)).toHaveAttribute('aria-labelledby', await tab.getAttribute('id'));
+    await expect(page.getByRole('tabpanel', { name: label, includeHidden: true })).toHaveAttribute('id', id);
+  }
+  await expectSelected(page, 'How it works');
+  expect(new URL(page.url()).hash).toBe('');
+});
+
+test('clicking a tab shows only its panel and puts it in the URL without scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 400 }); // short, so the page stays scrollable past the tabs
+  await page.goto('/');
+  for (const [label, id] of [...TABS].reverse()) {
+    const tab = page.getByRole('tab', { name: label });
+    await tab.scrollIntoViewIfNeeded(); // click() scrolls the tab into view itself; measure after that
+    const before = await page.evaluate(() => window.scrollY);
+    await tab.click();
+    await expectSelected(page, label);
+    expect(new URL(page.url()).hash).toBe(`#${id}`);
+    expect(await page.evaluate(() => window.scrollY)).toBe(before);
+  }
+});
+
+test('arrow, Home and End keys move focus between tabs, and Enter selects', async ({ page }) => {
+  await page.goto('/');
+  const tab = (label) => page.getByRole('tab', { name: label });
+  await tab('How it works').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(tab('Privacy')).toBeFocused();
+  await expectSelected(page, 'How it works'); // manual activation: focus alone does not select
+  await page.keyboard.press('Enter');
+  await expectSelected(page, 'Privacy');
+  await page.keyboard.press('ArrowRight');
+  await expect(tab('Credits')).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(tab('How it works')).toBeFocused(); // wraps
+  await page.keyboard.press('ArrowLeft');
+  await expect(tab('Credits')).toBeFocused(); // wraps back
+  await page.keyboard.press('Home');
+  await expect(tab('How it works')).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(tab('Credits')).toBeFocused();
+  await page.keyboard.press(' ');
+  await expectSelected(page, 'Credits');
+});
+
+test('a hash deep link opens its tab on load and on hash change', async ({ page }) => {
+  await page.goto('/#credits');
+  await expectSelected(page, 'Credits');
+  await page.evaluate(() => { location.hash = '#privacy'; });
+  await expectSelected(page, 'Privacy');
+  await page.evaluate(() => { location.hash = '#cli'; }); // not a tab: the selection stays
+  await expectSelected(page, 'Privacy');
+});
+
+test('the Privacy tab lists every usage event and field', async ({ page }) => {
+  await page.goto('/#privacy');
+  const note = page.locator('#privacy-note');
+  await expect(note).toBeVisible();
+  for (const name of [...Object.keys(EVENTS), ...Object.keys(FIELDS)]) await expect(note).toContainText(name);
+});
+
+test('without JavaScript every about panel is readable and the tab list is hidden', async ({ browser }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  await page.goto('/');
+  await expect(page.getByRole('tablist', { includeHidden: true })).toBeHidden();
+  for (const heading of ['How it works', 'Privacy', 'Credits and licenses']) {
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+  }
+  await expect(page.locator('#credits a[href="vendor/gifenc/LICENSE"]')).toBeVisible();
+  await context.close();
 });
 
 test('every credited license link serves the license text', async ({ page, request }) => {

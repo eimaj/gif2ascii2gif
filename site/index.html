@@ -64,14 +64,38 @@
       <p id="export-note" class="info" hidden>At this width, characters are smaller than 6 pixels in the exported GIF and may not be readable.</p>
     </section>
 
-    <section id="how" aria-labelledby="how-title">
-      <h2 id="how-title">How it works</h2>
-      <ol class="steps">
-        <li><strong>Decode.</strong> Your browser reads the GIF, rebuilds every full frame, and shrinks it to the chosen width (each character cell is twice as tall as it is wide).</li>
-        <li><strong>Convert.</strong> The most common border color is treated as the background and dropped. Every other pixel becomes a character from <code>.:-=+*#%@</code>, denser the further it is from the background, in its own 24-bit color.</li>
-        <li><strong>Export.</strong> The preview and the GIF draw each character from the same 6×12 pixel font, and the GIF is resized to exactly the source GIF's width and height. The player is a single Node script that plays the frames in your terminal.</li>
-      </ol>
-    </section>
+    <div id="about" class="tabs">
+      <div class="tablist" role="tablist" aria-label="About gif2ascii" hidden>
+        <button type="button" class="tab" role="tab" id="tab-how-it-works" aria-controls="how-it-works" aria-selected="true">How it works</button>
+        <button type="button" class="tab" role="tab" id="tab-privacy" aria-controls="privacy" aria-selected="false" tabindex="-1">Privacy</button>
+        <button type="button" class="tab" role="tab" id="tab-credits" aria-controls="credits" aria-selected="false" tabindex="-1">Credits</button>
+      </div>
+
+      <section id="how-it-works" class="tab-panel" role="tabpanel" aria-labelledby="tab-how-it-works" tabindex="0">
+        <h2>How it works</h2>
+        <ol class="steps">
+          <li><strong>Decode.</strong> Your browser reads the GIF, rebuilds every full frame, and shrinks it to the chosen width (each character cell is twice as tall as it is wide).</li>
+          <li><strong>Convert.</strong> The most common border color is treated as the background and dropped. Every other pixel becomes a character from <code>.:-=+*#%@</code>, denser the further it is from the background, in its own 24-bit color.</li>
+          <li><strong>Export.</strong> The preview and the GIF draw each character from the same 6×12 pixel font, and the GIF is resized to exactly the source GIF's width and height. The player is a single Node script that plays the frames in your terminal.</li>
+        </ol>
+      </section>
+
+      <section id="privacy" class="tab-panel privacy" role="tabpanel" aria-labelledby="tab-privacy" tabindex="0">
+        <h2>Privacy</h2>
+        <div id="privacy-note"></div>
+      </section>
+
+      <section id="credits" class="tab-panel" role="tabpanel" aria-labelledby="tab-credits" tabindex="0">
+        <h2>Credits and licenses</h2>
+        <p>This site ships these open-source libraries, unmodified, from its own server:</p>
+        <ul class="credits">
+          <li><a href="https://github.com/mattdesl/gifenc">gifenc</a> 1.0.3 by Matt DesLauriers. MIT License (<a href="vendor/gifenc/LICENSE">license text</a>). Used to encode the GIF you download.</li>
+          <li><a href="https://github.com/matt-way/gifuct-js">gifuct-js</a> 2.1.2 by Matt Way. MIT License (<a href="vendor/gifuct-js/LICENSE">license text</a>). Used to decode the GIF you load.</li>
+          <li><a href="https://github.com/matt-way/jsBinarySchemaParser">js-binary-schema-parser</a> 2.0.3 by Matt Way. MIT License (<a href="vendor/gifuct-js/LICENSE-js-binary-schema-parser">license text</a>). Bundled inside gifuct-js to read the GIF file format.</li>
+        </ul>
+        <p>The command-line scripts use <a href="https://ffmpeg.org/">FFmpeg</a> (LGPL/GPL, <a href="https://ffmpeg.org/legal.html">license details</a>), installed separately, to decode GIFs and encode the exported GIF. FFmpeg is not part of this site.</p>
+      </section>
+    </div>
 
     <section id="cli" aria-labelledby="cli-title">
       <h2 id="cli-title">Use it from the command line</h2>
@@ -80,22 +104,6 @@
       <div class="command"><code id="cmd-convert">node gif2ascii.mjs https://media.tenor.com/1iOUXZFLpBgAAAAM/dance-dancing.gif --width 40</code><button type="button" class="secondary copy" data-copy="cmd-convert">Copy</button></div>
       <div class="command"><code id="cmd-play">node players/dance-dancing.mjs</code><button type="button" class="secondary copy" data-copy="cmd-play">Copy</button></div>
       <div class="command"><code id="cmd-gif">node ascii2gif.mjs players/dance-dancing.mjs --scale 2</code><button type="button" class="secondary copy" data-copy="cmd-gif">Copy</button></div>
-    </section>
-
-    <section id="credits" aria-labelledby="credits-title">
-      <h2 id="credits-title">Credits and licenses</h2>
-      <p>This site ships these open-source libraries, unmodified, from its own server:</p>
-      <ul class="credits">
-        <li><a href="https://github.com/mattdesl/gifenc">gifenc</a> 1.0.3 by Matt DesLauriers. MIT License (<a href="vendor/gifenc/LICENSE">license text</a>). Used to encode the GIF you download.</li>
-        <li><a href="https://github.com/matt-way/gifuct-js">gifuct-js</a> 2.1.2 by Matt Way. MIT License (<a href="vendor/gifuct-js/LICENSE">license text</a>). Used to decode the GIF you load.</li>
-        <li><a href="https://github.com/matt-way/jsBinarySchemaParser">js-binary-schema-parser</a> 2.0.3 by Matt Way. MIT License (<a href="vendor/gifuct-js/LICENSE-js-binary-schema-parser">license text</a>). Bundled inside gifuct-js to read the GIF file format.</li>
-      </ul>
-      <p>The command-line scripts use <a href="https://ffmpeg.org/">FFmpeg</a> (LGPL/GPL, <a href="https://ffmpeg.org/legal.html">license details</a>), installed separately, to decode GIFs and encode the exported GIF. FFmpeg is not part of this site.</p>
-    </section>
-
-    <section id="privacy" class="privacy" aria-labelledby="privacy-title">
-      <h2 id="privacy-title">Privacy</h2>
-      <div id="privacy-note"></div>
     </section>
   </main>
 

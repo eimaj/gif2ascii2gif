@@ -400,6 +400,43 @@ $('privacy-note').replaceChildren(...privacyNote().map((block) => {
   return ul;
 }));
 
+// About tabs (WAI-ARIA tabs, manual activation). Each panel's id is also its URL hash.
+const tabsRoot = $('about');
+const tablist = tabsRoot.querySelector('[role="tablist"]');
+const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+const tabForHash = (hash) => tabs.find((tab) => `#${tab.getAttribute('aria-controls')}` === hash);
+
+function selectTab(tab, { updateHash = false } = {}) {
+  for (const t of tabs) {
+    const selected = t === tab;
+    t.setAttribute('aria-selected', String(selected));
+    t.tabIndex = selected ? 0 : -1;
+    $(t.getAttribute('aria-controls')).hidden = !selected;
+  }
+  // replaceState changes the hash without scrolling or adding a history entry.
+  if (updateHash) history.replaceState(null, '', `#${tab.getAttribute('aria-controls')}`);
+}
+
+for (const tab of tabs) tab.addEventListener('click', () => selectTab(tab, { updateHash: true }));
+
+tablist.addEventListener('keydown', (e) => {
+  const i = tabs.indexOf(document.activeElement);
+  if (i < 0) return;
+  const target = { ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: tabs.length - 1 }[e.key];
+  if (target === undefined) return;
+  e.preventDefault();
+  tabs[(target + tabs.length) % tabs.length].focus();
+});
+
+window.addEventListener('hashchange', () => {
+  const tab = tabForHash(location.hash);
+  if (tab) selectTab(tab);
+});
+
+selectTab(tabForHash(location.hash) ?? tabs[0]);
+tabsRoot.classList.add('enhanced');
+tablist.hidden = false;
+
 for (const button of document.querySelectorAll('button[data-copy]')) {
   button.addEventListener('click', async () => {
     const text = $(button.dataset.copy).textContent;
