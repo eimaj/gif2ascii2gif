@@ -1,6 +1,7 @@
 // A GIF block-structure scanner: walks the header, the logical screen descriptor, the global color
 // table, and every extension and image block with its sub-block chain, without copying any data.
-// It allocates only one small record per frame, for at most `maxFrames` frames, so a file of millions
+// It allocates only one small record per frame, for at most `maxFrames` frames, and one per plain-text
+// extension among the first `maxBlocks` blocks, so a file of millions
 // of tiny blocks costs one pass over its bytes. Standard JS only: the site and the CLI both use it.
 
 // Thrown when the bytes are not a structurally valid GIF.
