@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { tempDir, makeGif, probeGif } from '../helpers/fixtures.mjs';
+import { tempDir, makeGif, probeGif, firstFrameAlpha } from '../helpers/fixtures.mjs';
 import { declaring } from '../helpers/gifs.mjs';
 import { parsePlayer } from '../../site/lib/player.mjs';
 
@@ -11,6 +11,7 @@ const dir = tempDir('gif2ascii-e2e-');
 const small = makeGif(join(dir, 'small.gif'), { frames: 8, fps: 10 });
 const square = makeGif(join(dir, 'square.gif'), { frames: 4, fps: 10, width: 40, height: 40 });
 const long = makeGif(join(dir, 'long.gif'), { frames: 200, fps: 10 });
+const demoSize = makeGif(join(dir, 'demo-size.gif'), { frames: 4, fps: 10, width: 220, height: 366 }); // the demo GIF's size
 const tooMany = makeGif(join(dir, 'too-many.gif'), { frames: 301, fps: 10, width: 16, height: 16 });
 
 const canvasWidth = (page) => page.locator('#preview').evaluate((c) => c.width);
@@ -78,8 +79,33 @@ test('both downloads are named after the source and the GIF has every frame', as
   await gif.saveAs(saved);
   const info = probeGif(saved);
   expect(info.frames).toBe(8);
-  const w = await canvasWidth(page);
-  expect(info.width).toBe(w * 2);
+  expect([info.width, info.height]).toEqual([80, 60]); // the fixture's own size
+});
+
+test('the GIF export has exactly the source GIF\'s dimensions at every width', async ({ page }) => {
+  await upload(page, demoSize);
+  for (const width of ['40', '160']) {
+    await page.locator('#width').fill(width);
+    await expect.poll(() => canvasWidth(page)).toBe((Number(width) + 2) * 6);
+    const [gif] = await Promise.all([page.waitForEvent('download'), page.click('#download-gif')]);
+    const saved = join(dir, `demo-size-${width}.gif`);
+    await gif.saveAs(saved);
+    const info = probeGif(saved);
+    expect([info.width, info.height]).toEqual([220, 366]);
+  }
+});
+
+test('the scale control is gone, and narrow characters are flagged near the export button', async ({ page }) => {
+  await upload(page, demoSize);
+  await expect(page.locator('#scale')).toHaveCount(0);
+  await expect(page.getByText('Export scale')).toHaveCount(0);
+  const note = page.locator('#export-note');
+  await expect(note).toBeVisible(); // 40 columns × 6 = 240 px, wider than 220
+  await expect(note).toContainText('smaller than 6 pixels');
+  await page.locator('#width').fill('36'); // 216 px fits in 220
+  await expect(note).toBeHidden();
+  await page.locator('#width').fill('160');
+  await expect(note).toBeVisible();
 });
 
 test('the downloaded player holds the current frames, width, and delay', async ({ page }) => {
@@ -239,20 +265,19 @@ test('loading another GIF during an encode keeps that export and its event intac
   await expect.poll(() => bodies.find((b) => b.event === 'export_gif')).toEqual({ event: 'export_gif', input: 'file', width: '<=40', frames: '<=300' });
 });
 
-test('scale and background controls reach the export and the preview', async ({ page }) => {
+test('background controls reach the export and the preview', async ({ page }) => {
   await upload(page, small);
-  await page.locator('#scale').fill('4');
-  const [gif] = await Promise.all([page.waitForEvent('download'), page.click('#download-gif')]);
-  const saved = join(dir, 'scaled.gif');
-  await gif.saveAs(saved);
-  expect(probeGif(saved).width).toBe((await canvasWidth(page)) * 4);
-
   await expect(page.locator('#stage')).toHaveClass(/checker/);
   await page.locator('#transparent').uncheck();
   await page.locator('#bg-color').fill('#ff0000'); // not the default (#000000), so the chosen color must reach the preview
   const corner = () => page.locator('#preview').evaluate((c) => [...c.getContext('2d').getImageData(0, 0, 1, 1).data]);
   await expect.poll(corner).toEqual([255, 0, 0, 255]);
   await expect(page.locator('#stage')).not.toHaveClass(/checker/);
+
+  const [gif] = await Promise.all([page.waitForEvent('download'), page.click('#download-gif')]);
+  const saved = join(dir, 'solid.gif');
+  await gif.saveAs(saved);
+  expect(firstFrameAlpha(saved).every((a) => a === 255)).toBe(true);
 });
 
 test('the rendered privacy note discloses Web Analytics and links its policy', async ({ page }) => {

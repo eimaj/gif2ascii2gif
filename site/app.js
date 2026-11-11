@@ -3,6 +3,7 @@ import { decodeGif, checkFileSize, resampleArea, LimitError, NotAGifError } from
 import { fetchGif, FetchBlockedError, FetchTimeoutError, FETCH_TIMEOUT_MS } from './lib/fetch.mjs';
 import { frameSize, convertFrames } from './lib/core.mjs';
 import { parseAnsiFrame, gridBounds, renderFrameRGBA } from './lib/render.mjs';
+import { renderExportFrame, glyphsShrink } from './lib/export.mjs';
 import { playerSource } from './lib/player.mjs';
 import { GIFEncoder, quantize, applyPalette } from './vendor/gifenc/gifenc.esm.js';
 import { privacyNote, validateEvent, widthBucket, framesBucket } from './lib/events.mjs';
@@ -24,7 +25,6 @@ const ui = {
   width: $('width'),
   threshold: $('threshold'),
   keepBg: $('keep-bg'),
-  scale: $('scale'),
   transparent: $('transparent'),
   bgColor: $('bg-color'),
   stage: $('stage'),
@@ -33,18 +33,18 @@ const ui = {
   info: $('info'),
   downloadGif: $('download-gif'),
   downloadPlayer: $('download-player'),
+  exportNote: $('export-note'),
 };
 
 function syncOutputs() {
   $('width-out').value = ui.width.value;
   $('threshold-out').value = ui.threshold.value;
-  $('scale-out').value = ui.scale.value;
   ui.bgColor.disabled = ui.transparent.checked;
   ui.threshold.disabled = ui.keepBg.checked;
 }
 
 // Every conversion control: a change updates its label and re-converts the preview.
-const CONTROLS = [ui.width, ui.threshold, ui.keepBg, ui.scale, ui.transparent, ui.bgColor];
+const CONTROLS = [ui.width, ui.threshold, ui.keepBg, ui.transparent, ui.bgColor];
 for (const el of CONTROLS) {
   el.addEventListener('input', () => {
     syncOutputs();
@@ -190,9 +190,10 @@ document.addEventListener('drop', (e) => {
 // ---- Conversion and preview --------------------------------------------------------------
 
 const PREVIEW_CACHE_BYTES = 64 * 1024 * 1024;
+const PREVIEW_ZOOM = 2; // the canvas is shown at twice its pixel size
 
 // The current conversion: ANSI frames plus parsed grids, shared by the preview and both exports.
-let result = null; // { w, h, ansi, grids, cols, rows, delayMs }
+let result = null; // { w, h, ansi, grids, cols, rows, delayMs, srcWidth, srcHeight }
 let resampled = null; // { w, frames }: the current source resampled to the last width used
 let previewFrames = []; // ImageData per frame, filled lazily when small enough
 let frameIndex = 0;
@@ -204,7 +205,6 @@ function settings() {
     width: Number(ui.width.value),
     bgThreshold: Number(ui.threshold.value),
     keepBg: ui.keepBg.checked,
-    scale: Number(ui.scale.value),
     background: ui.transparent.checked ? 'transparent' : ui.bgColor.value,
   };
 }
@@ -221,7 +221,7 @@ function convert(src = source) {
     : src.frames.map((f) => resampleArea(f, src.width, src.height, w, h));
   const ansi = convertFrames(frames, w, h, { keepBg: s.keepBg, bgThreshold: s.bgThreshold });
   const grids = ansi.map(parseAnsiFrame);
-  const next = { w, h, ansi, grids, ...gridBounds(grids), delayMs: src.delayMs };
+  const next = { w, h, ansi, grids, ...gridBounds(grids), delayMs: src.delayMs, srcWidth: src.width, srcHeight: src.height };
   const index = src === source ? frameIndex % ansi.length : 0;
   const first = frameImage(next, index, s.background);
 
@@ -232,14 +232,16 @@ function convert(src = source) {
   previewFrames = [];
   cacheFrame(index, first);
   paint(first);
-  ui.canvas.style.width = `${first.width * s.scale}px`;
+  ui.canvas.style.width = `${first.width * PREVIEW_ZOOM}px`;
   ui.stage.classList.toggle('checker', s.background === 'transparent');
   const fps = (1000 / src.delayMs).toFixed(1);
-  ui.info.textContent = `${ansi.length} frames · ${w}×${h} characters · ${fps} fps · export ${first.width * s.scale}×${first.height * s.scale} px`;
+  ui.info.textContent = `${ansi.length} frames · ${w}×${h} characters · ${fps} fps · export ${src.width}×${src.height} px`;
+  ui.exportNote.hidden = !glyphsShrink(next.cols, src.width);
   play();
 }
 
-// Render one frame at scale 1; the canvas is scaled up with nearest-neighbor CSS, so it matches the export.
+// Render one frame at scale 1; the canvas is scaled up with nearest-neighbor CSS. The GIF export is
+// this frame without its margin, resampled to the source size.
 function frameImage(res, i, background) {
   const { data, width, height } = renderFrameRGBA(res.grids[i], res.cols, res.rows, { background });
   return new ImageData(new Uint8ClampedArray(data.buffer), width, height);
@@ -319,11 +321,12 @@ function download(blob, filename) {
 
 const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-// Encode the current frames with gifenc: one palette per frame, transparent index, dispose 2, looping.
-async function encodeGif({ grids, cols, rows, delayMs }, { background, scale }, onProgress) {
+// Encode the current frames at the source GIF's size with gifenc: one palette per frame,
+// transparent index, dispose 2, looping.
+async function encodeGif({ grids, cols, rows, delayMs, srcWidth, srcHeight }, { background }, onProgress) {
   const enc = GIFEncoder();
   for (let i = 0; i < grids.length; i++) {
-    const { data, width, height } = renderFrameRGBA(grids[i], cols, rows, { background, scale });
+    const { data, width, height } = renderExportFrame(grids[i], cols, rows, { background, width: srcWidth, height: srcHeight });
     const palette = quantize(data, 255, { format: 'rgba4444', oneBitAlpha: true });
     const index = applyPalette(data, palette, 'rgba4444');
     const transparentIndex = palette.findIndex((c) => c[3] === 0);

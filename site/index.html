@@ -44,9 +44,6 @@
 
         <label class="check"><input id="keep-bg" type="checkbox"> Keep background</label>
 
-        <label for="scale">Export scale <output id="scale-out" for="scale">2</output>×</label>
-        <input id="scale" type="range" min="1" max="8" step="1" value="2">
-
         <label class="check"><input id="transparent" type="checkbox" checked> Transparent export background</label>
         <label for="bg-color">Export background color</label>
         <input id="bg-color" type="color" value="#000000" disabled>
@@ -64,6 +61,7 @@
         <button id="download-gif" type="button" disabled>Download GIF</button>
         <button id="download-player" type="button" disabled>Download player (.mjs)</button>
       </div>
+      <p id="export-note" class="info" hidden>At this width, characters are smaller than 6 pixels in the exported GIF and may not be readable.</p>
     </section>
 
     <section id="how" aria-labelledby="how-title">
@@ -71,7 +69,7 @@
       <ol class="steps">
         <li><strong>Decode.</strong> Your browser reads the GIF, rebuilds every full frame, and shrinks it to the chosen width (each character cell is twice as tall as it is wide).</li>
         <li><strong>Convert.</strong> The most common border color is treated as the background and dropped. Every other pixel becomes a character from <code>.:-=+*#%@</code>, denser the further it is from the background, in its own 24-bit color.</li>
-        <li><strong>Export.</strong> The preview and the GIF draw each character from the same 6×12 pixel font. The player is a single Node script that plays the frames in your terminal.</li>
+        <li><strong>Export.</strong> The preview and the GIF draw each character from the same 6×12 pixel font, and the GIF is resized to exactly the source GIF's width and height. The player is a single Node script that plays the frames in your terminal.</li>
       </ol>
     </section>
 
