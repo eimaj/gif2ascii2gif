@@ -149,12 +149,18 @@ export function decodeGif(buffer) {
     throw new NotAGifError(`the decoder read ${parsedFrames} of ${scan.frameCount} frames`);
   }
   // Decompress lazily, one frame per composite step, so only one frame's pixels are alive at a time.
+  // Each image gets its graphic control fields from the scan: gifuct-js groups at most one application
+  // and one comment extension with a frame, so with more between a graphic control extension and its
+  // image it puts that extension in a frame of its own and the image loses its transparency and disposal.
   function* patches() {
+    let i = 0;
     for (const f of gif.frames) {
       if (!f.image) continue;
+      const { delayMs, disposal, transparentIndex } = scan.frames[i++];
+      const gce = { delay: delayMs / 10, extras: { disposal, transparentColorGiven: transparentIndex !== null }, transparentColorIndex: transparentIndex };
       let patch;
       try {
-        patch = decompressFrame(f, gif.gct, true);
+        patch = decompressFrame({ image: f.image, gce }, gif.gct, true);
       } catch (err) {
         throw new NotAGifError(err.message, { cause: err });
       }

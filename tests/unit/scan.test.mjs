@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scanGif, maxSubBlocks, MalformedGifError } from '../../site/lib/scan.mjs';
-import { RED, BLUE, encode, declaring, withExtensions, withoutGce, withSubBlockFlood } from '../helpers/gifs.mjs';
+import {
+  RED, BLUE, COMMENT, NETSCAPE, ICC, encode, declaring, beforeImage, withExtensions, withoutGce, withSubBlockFlood,
+} from '../helpers/gifs.mjs';
 
 const frame = { w: 1, h: 1, palette: [RED, BLUE], index: [0] };
 
@@ -13,7 +15,13 @@ test('scanGif: screen, frame rectangles, code sizes, and block counts', () => {
   assert.equal(scan.frameCount, 3);
   // gifenc writes a loop-count application extension, then a graphic control extension per frame.
   assert.equal(scan.blockCount, 1 + 3 * 2);
-  assert.deepEqual(scan.frames, Array(3).fill({ left: 3, top: 5, width: 4, height: 2, codeSize: 2, delayMs: 100 }));
+  assert.deepEqual(scan.frames, Array(3).fill({ left: 3, top: 5, width: 4, height: 2, codeSize: 2, delayMs: 100, disposal: 1, transparentIndex: null }));
+});
+
+test('scanGif: a frame takes disposal and transparency from its graphic control extension, whatever lies between', () => {
+  const bytes = encode([{ ...frame, dispose: 2 }, { ...frame, transparentIndex: 1 }, frame]);
+  const spaced = beforeImage(withoutGce(bytes, [2]), 1, COMMENT, COMMENT, NETSCAPE, ICC);
+  assert.deepEqual(scanGif(spaced).frames.map(({ disposal, transparentIndex }) => [disposal, transparentIndex]), [[2, null], [1, 1], [0, null]]);
 });
 
 test('scanGif: a graphic control extension sets only the next frame\'s delay; a frame with none gets 0', () => {

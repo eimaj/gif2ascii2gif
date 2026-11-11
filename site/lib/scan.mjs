@@ -37,8 +37,10 @@ function skipSubBlocks(bytes, p) {
 
 // Returns the screen size, the number of frames (image descriptors), of blocks (extensions plus
 // image descriptors), and of data sub-blocks (refused above maxSubBlocks), and for the first `maxFrames` frames their rectangle, LZW minimum code size, and
-// delay in ms. A graphic control extension sets the delay of the next frame only; a frame with none
-// gets 0, as browsers do (ffmpeg instead carries the last one forward).
+// graphic control fields: delay in ms, disposal method, and transparent color index (null for none).
+// A graphic control extension applies to the next frame only, whatever extensions lie between them; a
+// frame with none gets delay 0, disposal 0, and no transparency, as browsers do (ffmpeg instead carries
+// the last delay forward).
 // A file that ends cleanly between blocks without a trailer is accepted, as browsers do. `end` is the
 // offset just past the trailer (or the file's length without one): decoders stop there, so bytes after
 // it, such as a second GIF appended to the file, are not part of the GIF.
@@ -52,7 +54,8 @@ export function scanGif(bytes, { maxFrames = Infinity } = {}) {
   if (p > bytes.length) throw new MalformedGifError('truncated global color table');
 
   const frames = [];
-  let frameCount = 0, blockCount = 0, subBlockCount = 0, delayMs = 0;
+  const NO_GCE = { delayMs: 0, disposal: 0, transparentIndex: null };
+  let frameCount = 0, blockCount = 0, subBlockCount = 0, gce = NO_GCE;
   const chain = (start) => {
     const [end, n] = skipSubBlocks(bytes, start);
     subBlockCount += n;
@@ -66,8 +69,9 @@ export function scanGif(bytes, { maxFrames = Infinity } = {}) {
       // The decoder reads a GCE as exactly 4 data bytes, so any other size would desynchronize it.
       if (bytes[p + 1] === GCE) {
         if (bytes[p + 2] !== 4) throw new MalformedGifError(`graphic control extension of ${bytes[p + 2]} bytes, not 4`);
-        if (p + 5 >= bytes.length) throw new MalformedGifError('truncated graphic control extension');
-        delayMs = u16(p + 4) * 10;
+        if (p + 6 >= bytes.length) throw new MalformedGifError('truncated graphic control extension');
+        const packed = bytes[p + 3];
+        gce = { delayMs: u16(p + 4) * 10, disposal: (packed >> 2) & 7, transparentIndex: packed & 1 ? bytes[p + 6] : null };
       }
       p = chain(p + 2);
     } else if (introducer === IMAGE) {
@@ -76,9 +80,9 @@ export function scanGif(bytes, { maxFrames = Infinity } = {}) {
       if (codeAt >= bytes.length) throw new MalformedGifError('truncated local color table');
       frameCount++;
       if (frames.length < maxFrames) {
-        frames.push({ left: u16(p + 1), top: u16(p + 3), width: u16(p + 5), height: u16(p + 7), codeSize: bytes[codeAt], delayMs });
+        frames.push({ left: u16(p + 1), top: u16(p + 3), width: u16(p + 5), height: u16(p + 7), codeSize: bytes[codeAt], ...gce });
       }
-      delayMs = 0;
+      gce = NO_GCE;
       p = chain(codeAt + 1);
     } else {
       throw new MalformedGifError(`unknown block 0x${introducer.toString(16).padStart(2, '0')} at byte ${p}`);

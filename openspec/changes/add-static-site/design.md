@@ -36,7 +36,7 @@ package.json               # devDependencies: @playwright/test only
 
 ### D2. Pixel pipeline in the browser
 
-1. Decode with gifuct-js: `parseGIF` + `decompressFrames(gif, true)` gives per-frame RGBA patches, delays, and disposal types.
+1. Decode with gifuct-js: `parseGIF`, then `decompressFrame` per image gives RGBA patches. Each image's graphic control fields (delay, disposal, transparent index) come from the shared block scan (D5), not from gifuct-js's frame grouping, which keeps at most one comment and one application extension with a frame, so more extensions between a graphic control extension and its image would otherwise detach it.
 2. Composite patches onto a full-size RGBA canvas honoring disposal (1 keep, 2 clear to transparent, 3 restore previous), producing one full frame per GIF frame.
 3. Resample each full frame to `width × height` with area averaging (box filter over the source pixels covering each cell), matching ffmpeg's `flags=area` closely enough for a recognizable result. Transparent source pixels average as the GIF's background, treated as white.
 4. Run the shared core (`detectBackground`, `pickChar`, `frameToAnsi`) to get ANSI frames.

@@ -6,7 +6,9 @@ import {
 } from '../../site/lib/decode.mjs';
 import { readFileSync } from 'node:fs';
 import { frameDelay, frameSize, MAX_WIDTH, CHAR_ASPECT } from '../../site/lib/core.mjs';
-import { RED, BLUE, GREEN, WHITE, encode, declaring, codeSizeOffset, withExtensions, withSubBlockFlood } from '../helpers/gifs.mjs';
+import {
+  RED, BLUE, GREEN, WHITE, COMMENT, NETSCAPE, ICC, encode, declaring, beforeImage, codeSizeOffset, withExtensions, withSubBlockFlood,
+} from '../helpers/gifs.mjs';
 
 const pixel = (rgb, w, x, y) => [...rgb.subarray((y * w + x) * 3, (y * w + x) * 3 + 3)];
 
@@ -31,6 +33,25 @@ test('decodeGif: disposal 3 restores the previous frame, disposal 2 clears to tr
   assert.deepEqual(pixel(frames[3], 4, 0, 0), WHITE);
   assert.deepEqual(pixel(frames[3], 4, 1, 0), RED);
 });
+
+const spacings = {
+  'two comments': [COMMENT, COMMENT],
+  'two application extensions': [NETSCAPE, ICC],
+  'a comment then an application extension': [COMMENT, NETSCAPE],
+};
+for (const [name, exts] of Object.entries(spacings)) {
+  test(`decodeGif: ${name} between a graphic control extension and its image keep its disposal and transparency`, () => {
+    // Frame 1 is cleared by disposal 2; frame 2's only pixel is transparent, so it shows the cleared
+    // pixel as white. Losing frame 1's disposal shows blue; losing frame 2's transparency shows green.
+    const bytes = encode([
+      { w: 1, h: 1, palette: [RED, BLUE], index: [0] },
+      { w: 1, h: 1, palette: [BLUE, RED], index: [0], dispose: 2 },
+      { w: 1, h: 1, palette: [GREEN, RED], index: [0], transparentIndex: 0 },
+    ]);
+    const { frames } = decodeGif(beforeImage(beforeImage(bytes, 2, ...exts), 1, ...exts));
+    assert.deepEqual(frames.map((f) => pixel(f, 1, 0, 0)), [RED, BLUE, WHITE]);
+  });
+}
 
 test('decodeGif: more than 300 frames throws a frames LimitError with the actual count', () => {
   const frame = { w: 1, h: 1, palette: [RED, BLUE], index: [0] };

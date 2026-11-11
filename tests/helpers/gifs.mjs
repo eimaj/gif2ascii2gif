@@ -69,6 +69,24 @@ export function withExtensions(bytes, count, ext = [0x21, 0xfe, 0x00]) {
   return out;
 }
 
+// Whole extension blocks: a 2-byte comment, a loop-count application extension, and an ICC-style one.
+const ascii = (s) => [...new TextEncoder().encode(s)];
+export const COMMENT = [0x21, 0xfe, 0x02, ...ascii('hi'), 0x00];
+export const NETSCAPE = [0x21, 0xff, 0x0b, ...ascii('NETSCAPE2.0'), 0x03, 0x01, 0x00, 0x00, 0x00];
+export const ICC = [0x21, 0xff, 0x0b, ...ascii('ICCRGBG1012'), 0x04, 1, 2, 3, 4, 0x00];
+
+// `bytes` with the extension blocks `exts` inserted right before frame `frame`'s image descriptor
+// (0-based), so after that frame's graphic control extension.
+export function beforeImage(bytes, frame, ...exts) {
+  const at = imageDescriptorOffsets(bytes)[frame];
+  const ext = exts.flat();
+  const out = new Uint8Array(bytes.length + ext.length);
+  out.set(bytes.subarray(0, at), 0);
+  out.set(ext, at);
+  out.set(bytes.subarray(at), at + ext.length);
+  return out;
+}
+
 // `bytes` with the graphic control extension removed from each frame listed in `frames` (0-based),
 // so those frames carry no delay. gifenc writes an 8-byte one right before every image descriptor.
 export function withoutGce(bytes, frames) {
