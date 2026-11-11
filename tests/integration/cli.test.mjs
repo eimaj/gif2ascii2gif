@@ -125,7 +125,7 @@ test('CLI: a network failure names the URL and the cause', async () => {
   const url = `http://127.0.0.1:${port}/x.gif`;
   const r = spawnSync('node', [join(ROOT, 'gif2ascii.mjs'), url, '-o', join(tempDir(), 'out.mjs')], { encoding: 'utf8' });
   assert.equal(r.status, 1);
-  assert.equal(r.stderr, `gif2ascii: download failed: connect ECONNREFUSED 127.0.0.1:${port} for ${url}\n`);
+  assert.equal(r.stderr, `gif2ascii: couldn't convert this GIF: download failed: connect ECONNREFUSED 127.0.0.1:${port} for ${url}\n`);
 });
 
 test('CLI: a plain-text extension is accepted, as on the site', () => {
@@ -153,12 +153,32 @@ test('CLI: a zero-size screen is refused before ffmpeg runs', () => {
   assert.match(r.stderr, /^gif2ascii: not a readable GIF \(zero size\)$/m);
 });
 
+// A directory holding an `ffmpeg` that fails at once without reading its input, to put first on PATH.
+function failingFfmpeg(dir) {
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'ffmpeg'), '#!/bin/sh\necho "fake ffmpeg failed" >&2\nexit 1\n', { mode: 0o755 });
+  return bin;
+}
+
+test('CLI: an unexpected failure exits 1 with the "couldn\'t convert this GIF" prefix in both scripts', () => {
+  const dir = tempDir();
+  const env = { ...process.env, PATH: `${failingFfmpeg(dir)}:${process.env.PATH}` };
+  const gif = join(dir, 'in.gif');
+  writeFileSync(gif, encode([{ w: 2, h: 2, palette: [RED, BLUE], index: [0, 0, 0, 0] }]));
+  const player = join(dir, 'in.mjs');
+  writeFileSync(player, playerSource(['@'], 100));
+  for (const [script, input] of [['gif2ascii', gif], ['ascii2gif', player]]) {
+    const r = spawnSync(process.execPath, [join(ROOT, `${script}.mjs`), input, '-o', join(dir, 'out')], { encoding: 'utf8', env });
+    assert.equal(r.status, 1, script);
+    assert.match(r.stderr, new RegExp(`^${script}: couldn't convert this GIF: .*fake ffmpeg failed`, 'ms'));
+  }
+});
+
 test('CLI: when ffmpeg fails on a large input, its own error is reported and the temporary file is removed', () => {
   const dir = tempDir();
-  const bin = join(dir, 'bin'), tmp = join(dir, 'tmp');
-  mkdirSync(bin);
+  const bin = failingFfmpeg(dir), tmp = join(dir, 'tmp');
   mkdirSync(tmp);
-  writeFileSync(join(bin, 'ffmpeg'), '#!/bin/sh\necho "fake ffmpeg failed" >&2\nexit 1\n', { mode: 0o755 });
   // A 2 MB comment of 255-byte sub-blocks, far more than a pipe buffer holds.
   const comment = [0x21, 0xfe, ...Array.from({ length: 8000 }, () => [255, ...Array(255).fill(0x78)]).flat(), 0x00];
   const gif = join(dir, 'large.gif');

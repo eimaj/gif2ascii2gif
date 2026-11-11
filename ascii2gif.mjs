@@ -6,6 +6,9 @@ import { readFileSync } from 'node:fs';
 import { MAX_SCALE, parseBackground, renderFrames } from './site/lib/render.mjs';
 import { parsePlayer } from './site/lib/player.mjs';
 
+// A usage or option error, printed as is; any other error is printed after "couldn't convert this GIF".
+class CliError extends Error {}
+
 const USAGE = 'usage: node ascii2gif.mjs <player.mjs> [--scale 2] [--bg transparent|RRGGBB] [-o out.gif]';
 
 function parseArgs(argv) {
@@ -15,17 +18,17 @@ function parseArgs(argv) {
     if (a === '--scale') opts.scale = Number(argv[++i]);
     else if (a === '--bg') opts.bg = String(argv[++i]).replace(/^#/, '');
     else if (a === '-o') opts.out = argv[++i];
-    else if (a.startsWith('-')) throw new Error(`unknown flag: ${a}`);
+    else if (a.startsWith('-')) throw new CliError(`unknown flag: ${a}`);
     else opts.input = a;
   }
-  if (!opts.input) throw new Error(USAGE);
+  if (!opts.input) throw new CliError(USAGE);
   if (!Number.isInteger(opts.scale) || opts.scale < 1 || opts.scale > MAX_SCALE) {
-    throw new Error(`--scale must be an integer 1-${MAX_SCALE}, got ${opts.scale}`);
+    throw new CliError(`--scale must be an integer 1-${MAX_SCALE}, got ${opts.scale}`);
   }
   try {
     parseBackground(opts.bg);
   } catch (err) {
-    throw new Error(`--bg: ${err.message}`, { cause: err });
+    throw new CliError(`--bg: ${err.message}`, { cause: err });
   }
   return opts;
 }
@@ -68,6 +71,6 @@ function main() {
 try {
   main();
 } catch (err) {
-  console.error(`ascii2gif: ${err.message}`);
+  console.error(err instanceof CliError ? `ascii2gif: ${err.message}` : `ascii2gif: couldn't convert this GIF: ${err.message}`);
   process.exit(1);
 }

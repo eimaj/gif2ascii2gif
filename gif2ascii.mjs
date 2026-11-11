@@ -15,6 +15,10 @@ import { checkCodeSizes, NotAGifError } from './site/lib/decode.mjs';
 
 const PLAYERS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'players');
 
+// A usage, option, or not-a-readable-GIF error, printed as is; any other error is printed after
+// "couldn't convert this GIF".
+class CliError extends Error {}
+
 const USAGE = `usage: node gif2ascii.mjs <gif-url> [--width ${DEFAULT_WIDTH}] [--bg-threshold ${DEFAULT_BG_THRESHOLD}] [--keep-bg] [-o out.mjs]`;
 
 function parseArgs(argv) {
@@ -25,13 +29,13 @@ function parseArgs(argv) {
     else if (a === '--bg-threshold') opts.bgThreshold = Number(argv[++i]);
     else if (a === '--keep-bg') opts.keepBg = true;
     else if (a === '-o') opts.out = argv[++i];
-    else if (a.startsWith('-')) throw new Error(`unknown flag: ${a}`);
+    else if (a.startsWith('-')) throw new CliError(`unknown flag: ${a}`);
     else opts.input = a;
   }
-  if (!opts.input) throw new Error(USAGE);
-  if (!Number.isInteger(opts.width) || opts.width < 8) throw new Error(`--width must be an integer >= 8, got ${opts.width}`);
+  if (!opts.input) throw new CliError(USAGE);
+  if (!Number.isInteger(opts.width) || opts.width < 8) throw new CliError(`--width must be an integer >= 8, got ${opts.width}`);
   if (!(opts.bgThreshold >= 0 && opts.bgThreshold < MAX_BG_DISTANCE)) {
-    throw new Error(`--bg-threshold must be between 0 and ${MAX_BG_DISTANCE - 1}, got ${opts.bgThreshold}`);
+    throw new CliError(`--bg-threshold must be between 0 and ${MAX_BG_DISTANCE - 1}, got ${opts.bgThreshold}`);
   }
   return opts;
 }
@@ -60,12 +64,12 @@ function probe(bytes) {
     scan = scanGif(bytes);
     checkCodeSizes(scan);
   } catch (err) {
-    if (err instanceof MalformedGifError) throw new Error(`not a readable GIF (${err.message})`, { cause: err });
-    if (err instanceof NotAGifError) throw new Error(`not a readable GIF (${err.detail})`, { cause: err });
+    if (err instanceof MalformedGifError) throw new CliError(`not a readable GIF (${err.message})`, { cause: err });
+    if (err instanceof NotAGifError) throw new CliError(`not a readable GIF (${err.detail})`, { cause: err });
     throw err;
   }
-  if (scan.frameCount === 0) throw new Error('not a readable GIF (no frames)');
-  if (!scan.width || !scan.height) throw new Error('not a readable GIF (zero size)');
+  if (scan.frameCount === 0) throw new CliError('not a readable GIF (no frames)');
+  if (!scan.width || !scan.height) throw new CliError('not a readable GIF (zero size)');
   return {
     width: scan.width, height: scan.height, frameCount: scan.frameCount, end: scan.end,
     delayMs: frameDelay(scan.frames.map((f) => f.delayMs)),
@@ -121,6 +125,6 @@ async function main() {
 try {
   await main();
 } catch (err) {
-  console.error(`gif2ascii: ${err.message}`);
+  console.error(err instanceof CliError ? `gif2ascii: ${err.message}` : `gif2ascii: couldn't convert this GIF: ${err.message}`);
   process.exit(1);
 }
